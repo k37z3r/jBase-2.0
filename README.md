@@ -92,7 +92,7 @@ $.http.get('https://api.example.com/items')
 
 ## 📚 Documentation
 
-Detailed documentation for all methods is available in the **[GitHub Wiki](wiki)**.
+Detailed documentation for all methods is available in the **[GitHub Wiki](./wiki)**.
 
 
 ---
