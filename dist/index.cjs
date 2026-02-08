@@ -1,6 +1,6 @@
 /**
  * @k37z3r/jbase - A modern micro-framework for the web: jBase offers the familiar syntax of classic DOM libraries, but without their baggage. Fully typed, modular, and optimized for modern browser engines.
- * @version 2.0.1
+ * @version 2.0.2
  * @homepage https://github.com/k37z3r/jBase-2.0
  * @author Sven Minio (https://github.com/k37z3r/jBase-2.0)
  * @license GPL-3.0-or-later
@@ -30,10 +30,12 @@ var index_exports = {};
 __export(index_exports, {
   $: () => $,
   JBaseClass: () => jBase,
+  __: () => __,
   __jB: () => __jB,
   __jBase: () => __jBase,
   _jB: () => _jB,
   _jBase: () => _jBase,
+  bind: () => bind,
   data: () => data,
   debounce: () => debounce,
   http: () => http,
@@ -46,15 +48,21 @@ module.exports = __toCommonJS(index_exports);
 // src/core.ts
 var jBase = class extends Array {
   selectorSource = "";
+  doc;
   /**
-   * * 🇬🇧: Initializes a new jBase instance. Analyzes the provided selector and populates the internal array with found or created DOM elements.
-   * * 🇩🇪: Initialisiert eine neue jBase-Instanz. Analysiert den übergebenen Selektor und füllt das interne Array mit den gefundenen oder erstellten DOM-Elementen.
+   * * Initializes a new jBase instance. Analyzes the provided selector and populates the internal array with found or created DOM elements.
    * @param selector
-   * * 🇬🇧: The input selector (CSS selector, HTML string, DOM element, or collection).
-   * * 🇩🇪: Der Eingabe-Selektor (CSS-Selektor, HTML-String, DOM-Element oder Sammlung).
+   * * The input selector (CSS selector, HTML string, DOM element, or collection).
    */
-  constructor(selector) {
+  constructor(selector, context) {
     super();
+    if (context instanceof Document) {
+      this.doc = context;
+    } else if (context && context.document) {
+      this.doc = context.document;
+    } else {
+      this.doc = typeof document !== "undefined" ? document : null;
+    }
     if (typeof document === "undefined") {
       return;
     }
@@ -73,19 +81,31 @@ var jBase = class extends Array {
         const el = document.getElementById(trimmed.slice(1));
         if (el)
           this.push(el);
+      } else if (trimmed.startsWith(".") && !trimmed.includes(" ") && !/[:\[#]/.test(trimmed)) {
+        const els = document.getElementsByClassName(trimmed.slice(1));
+        for (let i = 0; i < els.length; i++) {
+          this.push(els[i]);
+        }
+      } else if (/^[a-zA-Z0-9]+$/.test(trimmed)) {
+        const els = document.getElementsByTagName(trimmed);
+        for (let i = 0; i < els.length; i++) {
+          this.push(els[i]);
+        }
       } else {
-        this.push(...Array.from(document.querySelectorAll(selector)));
+        try {
+          this.push(...Array.from(document.querySelectorAll(selector)));
+        } catch (e) {
+          console.warn(`jBase: Invalid selector "${selector}"`, e);
+        }
       }
     } else if (selector instanceof NodeList || Array.isArray(selector)) {
       this.push(...Array.from(selector));
     }
   }
   /**
-   * * 🇬🇧: Custom serializer for JSON.stringify. Prevents circular references and huge outputs by returning a simplified preview.
-   * * 🇩🇪: Benutzerdefinierte Serialisierung für JSON.stringify. Verhindert Zirkelbezüge und riesige Ausgaben durch Rückgabe einer vereinfachten Vorschau.
+   * * Custom serializer for JSON.stringify. Prevents circular references and huge outputs by returning a simplified preview.
    * @returns
-   * * 🇬🇧: A simplified object representation for debugging.
-   * * 🇩🇪: Eine vereinfachte Objektrepräsentation für das Debugging.
+   * * A simplified object representation for debugging.
    */
   toJSON() {
     return {
@@ -142,7 +162,13 @@ function css(property, value) {
   if (value === void 0) {
     const el = this[0];
     if (el instanceof HTMLElement || el instanceof SVGElement) {
-      return window.getComputedStyle(el)[property];
+      const doc = el.ownerDocument;
+      const win = doc ? doc.defaultView : null;
+      if (win) {
+        return win.getComputedStyle(el)[property];
+      } else {
+        return el.style[property] || "";
+      }
     }
     return "";
   }
@@ -246,7 +272,8 @@ __export(lifecycle_exports, {
   ready: () => ready
 });
 function ready(handler) {
-  if (document.readyState === "complete" || document.readyState === "interactive") {
+  const doc = window.document;
+  if (doc.readyState === "complete" || doc.readyState === "interactive") {
     handler();
   } else {
     this.on("DOMContentLoaded", handler);
@@ -429,16 +456,22 @@ __export(manipulation_exports, {
   unwrap: () => unwrap,
   wrap: () => wrap
 });
-function parseHTML(html2) {
-  const tmp = document.createElement("div");
+function parseHTML(html2, doc) {
+  const tmp = doc.createElement("div");
   tmp.innerHTML = html2.trim();
   return tmp.firstElementChild;
 }
-function normalizeToFragment(content) {
-  const fragment = document.createDocumentFragment();
+function getDoc(collection) {
+  if (collection.length > 0 && collection[0] instanceof Element) {
+    return collection[0].ownerDocument;
+  }
+  return typeof document !== "undefined" ? document : null;
+}
+function normalizeToFragment(content, doc) {
+  const fragment = doc.createDocumentFragment();
   const add2 = (item) => {
     if (typeof item === "string") {
-      const temp = document.createElement("div");
+      const temp = doc.createElement("div");
       temp.innerHTML = item.trim();
       while (temp.firstChild) {
         fragment.appendChild(temp.firstChild);
@@ -476,7 +509,18 @@ function replaceWithClone() {
   return new this.constructor(newElements);
 }
 function append(content) {
-  const fragment = normalizeToFragment(content);
+  if (typeof content === "string") {
+    this.forEach((el) => {
+      if (el instanceof Element) {
+        el.insertAdjacentHTML("beforeend", content);
+      }
+    });
+    return this;
+  }
+  const doc = getDoc(this);
+  if (!doc)
+    return this;
+  const fragment = normalizeToFragment(content, doc);
   this.forEach((el, i) => {
     if (el instanceof Element) {
       const contentToInsert = i < this.length - 1 ? fragment.cloneNode(true) : fragment;
@@ -486,7 +530,18 @@ function append(content) {
   return this;
 }
 function prepend(content) {
-  const fragment = normalizeToFragment(content);
+  if (typeof content === "string") {
+    this.forEach((el) => {
+      if (el instanceof Element) {
+        el.insertAdjacentHTML("afterbegin", content);
+      }
+    });
+    return this;
+  }
+  const doc = getDoc(this);
+  if (!doc)
+    return this;
+  const fragment = normalizeToFragment(content, doc);
   this.forEach((el, i) => {
     if (el instanceof Element) {
       const contentToInsert = i < this.length - 1 ? fragment.cloneNode(true) : fragment;
@@ -496,7 +551,18 @@ function prepend(content) {
   return this;
 }
 function before(content) {
-  const fragment = normalizeToFragment(content);
+  if (typeof content === "string") {
+    this.forEach((el) => {
+      if (el instanceof Element) {
+        el.insertAdjacentHTML("beforebegin", content);
+      }
+    });
+    return this;
+  }
+  const doc = getDoc(this);
+  if (!doc)
+    return this;
+  const fragment = normalizeToFragment(content, doc);
   this.forEach((el, i) => {
     if (el instanceof Element) {
       const contentToInsert = i < this.length - 1 ? fragment.cloneNode(true) : fragment;
@@ -506,7 +572,18 @@ function before(content) {
   return this;
 }
 function after(content) {
-  const fragment = normalizeToFragment(content);
+  if (typeof content === "string") {
+    this.forEach((el) => {
+      if (el instanceof Element) {
+        el.insertAdjacentHTML("afterend", content);
+      }
+    });
+    return this;
+  }
+  const doc = getDoc(this);
+  if (!doc)
+    return this;
+  const fragment = normalizeToFragment(content, doc);
   this.forEach((el, i) => {
     if (el instanceof Element) {
       const contentToInsert = i < this.length - 1 ? fragment.cloneNode(true) : fragment;
@@ -516,7 +593,10 @@ function after(content) {
   return this;
 }
 function replaceWith(content) {
-  const fragment = normalizeToFragment(content);
+  const doc = getDoc(this);
+  if (!doc)
+    return this;
+  const fragment = normalizeToFragment(content, doc);
   this.forEach((el, i) => {
     if (el instanceof Element) {
       const contentToInsert = i < this.length - 1 ? fragment.cloneNode(true) : fragment;
@@ -526,9 +606,12 @@ function replaceWith(content) {
   return this;
 }
 function appendTo(target) {
-  const parent2 = typeof target === "string" ? document.querySelector(target) : target;
+  const doc = getDoc(this);
+  if (!doc)
+    return this;
+  const parent2 = typeof target === "string" ? doc.querySelector(target) : target;
   if (parent2 instanceof Element) {
-    const fragment = document.createDocumentFragment();
+    const fragment = doc.createDocumentFragment();
     this.forEach((el) => {
       if (el instanceof Node) fragment.appendChild(el);
     });
@@ -537,9 +620,12 @@ function appendTo(target) {
   return this;
 }
 function prependTo(target) {
-  const parent2 = typeof target === "string" ? document.querySelector(target) : target;
+  const doc = getDoc(this);
+  if (!doc)
+    return this;
+  const parent2 = typeof target === "string" ? doc.querySelector(target) : target;
   if (parent2 instanceof Element) {
-    const fragment = document.createDocumentFragment();
+    const fragment = doc.createDocumentFragment();
     this.forEach((el) => {
       if (el instanceof Node) fragment.appendChild(el);
     });
@@ -548,9 +634,12 @@ function prependTo(target) {
   return this;
 }
 function insertBefore(target) {
-  const targetEl = typeof target === "string" ? document.querySelector(target) : target;
+  const doc = getDoc(this);
+  if (!doc)
+    return this;
+  const targetEl = typeof target === "string" ? doc.querySelector(target) : target;
   if (targetEl instanceof Element) {
-    const fragment = document.createDocumentFragment();
+    const fragment = doc.createDocumentFragment();
     this.forEach((el) => {
       if (el instanceof Node) fragment.appendChild(el);
     });
@@ -559,9 +648,12 @@ function insertBefore(target) {
   return this;
 }
 function insertAfter(target) {
-  const targetEl = typeof target === "string" ? document.querySelector(target) : target;
+  const doc = getDoc(this);
+  if (!doc)
+    return this;
+  const targetEl = typeof target === "string" ? doc.querySelector(target) : target;
   if (targetEl instanceof Element) {
-    const fragment = document.createDocumentFragment();
+    const fragment = doc.createDocumentFragment();
     this.forEach((el) => {
       if (el instanceof Node) fragment.appendChild(el);
     });
@@ -570,9 +662,12 @@ function insertAfter(target) {
   return this;
 }
 function wrap(wrapperHtml) {
+  const doc = getDoc(this);
+  if (!doc)
+    return this;
   this.forEach((el) => {
     if (el instanceof Element) {
-      const wrapper = parseHTML(wrapperHtml);
+      const wrapper = parseHTML(wrapperHtml, doc);
       if (el.parentNode) {
         el.parentNode.insertBefore(wrapper, el);
       }
@@ -582,15 +677,21 @@ function wrap(wrapperHtml) {
   return this;
 }
 function unwrap() {
+  const doc = getDoc(this);
+  if (!doc)
+    return this;
+  const parents2 = /* @__PURE__ */ new Set();
   this.forEach((el) => {
     if (el instanceof Element && el.parentElement) {
-      const parent2 = el.parentElement;
-      const fragment = document.createDocumentFragment();
-      while (parent2.firstChild) {
-        fragment.appendChild(parent2.firstChild);
-      }
-      parent2.replaceWith(fragment);
+      parents2.add(el.parentElement);
     }
+  });
+  parents2.forEach((parent2) => {
+    const fragment = doc.createDocumentFragment();
+    while (parent2.firstChild) {
+      fragment.appendChild(parent2.firstChild);
+    }
+    parent2.replaceWith(fragment);
   });
   return this;
 }
@@ -954,7 +1055,34 @@ __export(slide_exports, {
   slideOut: () => slideOut,
   slideToggle: () => slideToggle
 });
+
+// src/utils.ts
+function throttle(func, limit) {
+  let inThrottle;
+  return function(...args) {
+    const context = this;
+    if (!inThrottle) {
+      func.apply(context, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+}
+function debounce(func, delay) {
+  let timer;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => func.apply(this, args), delay);
+  };
+}
+function isBrowser() {
+  return typeof window !== "undefined" && typeof window.requestAnimationFrame !== "undefined";
+}
+
+// src/modules/effects/slide.ts
 function slideIn(options = {}) {
+  if (!isBrowser())
+    return this;
   const { duration = 300 } = options;
   this.forEach((el) => {
     if (el instanceof HTMLElement) {
@@ -969,6 +1097,8 @@ function slideIn(options = {}) {
   return this;
 }
 function slideOut(options = {}) {
+  if (!isBrowser())
+    return this;
   const { direction = "left", duration = 300 } = options;
   const translateValue = direction === "left" ? "-100%" : "100%";
   this.forEach((el) => {
@@ -984,11 +1114,13 @@ function slideOut(options = {}) {
   return this;
 }
 function slideToggle(options = {}) {
+  if (!isBrowser())
+    return this;
   this.forEach((el) => {
     if (el instanceof HTMLElement) {
       const state = el.getAttribute("data-slide-state");
       const currentTransform = el.style.transform;
-      if (state === "open" || currentTransform === "translateX(0%)" || window.getComputedStyle(el).display !== "none") {
+      if (state === "open" || currentTransform === "translateX(0%)") {
         const wrapper = new this.constructor(el);
         wrapper.slideOut(options);
       } else {
@@ -1008,17 +1140,20 @@ __export(vertical_exports, {
   slideUp: () => slideUp
 });
 function slideDown(options = {}) {
+  if (!isBrowser())
+    return this;
   const { duration = 300, displayType = "block" } = options;
   this.forEach((el) => {
     if (el instanceof HTMLElement) {
-      if (window.getComputedStyle(el).display !== "none") return;
+      if (window.getComputedStyle(el).display !== "none")
+        return;
       el.style.display = displayType;
       const height = el.scrollHeight;
       el.style.height = "0px";
       el.style.overflow = "hidden";
       el.style.transition = `height ${duration}ms ease-in-out`;
       void el.offsetHeight;
-      el.style.height = height + "px";
+      el.style.height = `${height}px`;
       setTimeout(() => {
         el.style.height = "auto";
         el.style.overflow = "visible";
@@ -1029,10 +1164,12 @@ function slideDown(options = {}) {
   return this;
 }
 function slideUp(options = {}) {
+  if (!isBrowser())
+    return this;
   const { duration = 300 } = options;
   this.forEach((el) => {
     if (el instanceof HTMLElement) {
-      el.style.height = el.scrollHeight + "px";
+      el.style.height = `${el.scrollHeight}px`;
       el.style.overflow = "hidden";
       el.style.transition = `height ${duration}ms ease-in-out`;
       void el.offsetHeight;
@@ -1048,6 +1185,8 @@ function slideUp(options = {}) {
   return this;
 }
 function slideToggleBox(options = {}) {
+  if (!isBrowser())
+    return this;
   this.forEach((el) => {
     if (el instanceof HTMLElement) {
       const display = window.getComputedStyle(el).display;
@@ -1070,6 +1209,8 @@ __export(fade_exports, {
   fadeToggle: () => fadeToggle
 });
 function fadeIn(options = {}) {
+  if (!isBrowser())
+    return this;
   const { duration = 300, displayType = "block" } = options;
   this.forEach((el) => {
     if (el instanceof HTMLElement) {
@@ -1088,6 +1229,8 @@ function fadeIn(options = {}) {
   return this;
 }
 function fadeOut(options = {}) {
+  if (!isBrowser())
+    return this;
   const { duration = 300 } = options;
   this.forEach((el) => {
     if (el instanceof HTMLElement) {
@@ -1106,6 +1249,8 @@ function fadeOut(options = {}) {
   return this;
 }
 function fadeToggle(options = {}) {
+  if (!isBrowser())
+    return this;
   this.forEach((el) => {
     if (el instanceof HTMLElement) {
       const display = window.getComputedStyle(el).display;
@@ -1127,26 +1272,6 @@ var effectMethods = {
   ...fade_exports
 };
 
-// src/utils.ts
-function throttle(func, limit) {
-  let inThrottle;
-  return function(...args) {
-    const context = this;
-    if (!inThrottle) {
-      func.apply(context, args);
-      inThrottle = true;
-      setTimeout(() => inThrottle = false, limit);
-    }
-  };
-}
-function debounce(func, delay) {
-  let timer;
-  return function(...args) {
-    clearTimeout(timer);
-    timer = setTimeout(() => func.apply(this, args), delay);
-  };
-}
-
 // src/modules/http/get.ts
 var get_exports = {};
 __export(get_exports, {
@@ -1160,14 +1285,16 @@ async function get(url) {
   if (!response.ok) {
     throw new Error(`HTTP Error: ${response.status}`);
   }
-  return await response.json();
+  const text2 = await response.text();
+  return text2 ? JSON.parse(text2) : {};
 }
 async function getText(url) {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`HTTP Error: ${response.status}`);
   }
-  return await response.text();
+  const text2 = await response.text();
+  return text2 ? JSON.parse(text2) : {};
 }
 
 // src/modules/http/post.ts
@@ -1182,13 +1309,14 @@ async function post(url, body = {}) {
     body: JSON.stringify(body)
   });
   if (response.status === 204) {
-    const text2 = await response.text();
-    return text2 ? JSON.parse(text2) : {};
+    const text3 = await response.text();
+    return text3 ? JSON.parse(text3) : {};
   }
   if (!response.ok) {
     throw new Error(`HTTP Error: ${response.status}`);
   }
-  return await response.json();
+  const text2 = await response.text();
+  return text2 ? JSON.parse(text2) : {};
 }
 
 // src/modules/http/index.ts
@@ -1206,26 +1334,6 @@ __export(arrays_exports, {
   mergeArray: () => mergeArray,
   remove: () => remove2
 });
-
-// src/modules/data/types.ts
-function checkMatch(value, query, mode) {
-  const valStr = String(value).toLowerCase();
-  const queryStr = String(query).toLowerCase();
-  switch (mode) {
-    case "exact":
-      return valStr === queryStr;
-    case "startsWith":
-      return valStr.startsWith(queryStr);
-    case "endsWith":
-      return valStr.endsWith(queryStr);
-    case "contains":
-      return valStr.includes(queryStr);
-    default:
-      return false;
-  }
-}
-
-// src/modules/data/arrays.ts
 function chunk(array, size) {
   const chunks = [];
   for (let i = 0; i < array.length; i += size) {
@@ -1244,14 +1352,11 @@ function add(array, item, index = array.length) {
 }
 var remove2 = {
   /**
-   * * 🇬🇧: Removes an element at a specific index.
-   * * 🇩🇪: Entfernt ein Element an einem spezifischen Index.
+   * * Removes an element at a specific index.
    * @param array
-   * * 🇬🇧: The array.
-   * * 🇩🇪: Das Array.
+   * * The array.
    * @param index
-   * * 🇬🇧: The index (negative values allowed).
-   * * 🇩🇪: Der Index (negativ möglich).
+   * * The index (negative values allowed).
    */
   at(array, index) {
     const copy = [...array];
@@ -1262,176 +1367,215 @@ var remove2 = {
     return copy;
   },
   /**
-   * * 🇬🇧: Removes the first element.
-   * * 🇩🇪: Entfernt das erste Element.
+   * * Removes the first element.
    * @param array
-   * * 🇬🇧: The array.
-   * * 🇩🇪: Das Array.
+   * * The array.
    */
   first(array) {
     return array.slice(1);
   },
   /**
-   * * 🇬🇧: Removes the last element.
-   * * 🇩🇪: Entfernt das letzte Element.
+   * * Removes the last element.
    * @param array
-   * * 🇬🇧: The array.
-   * * 🇩🇪: Das Array.
+   * * The array.
    */
   last(array) {
     return array.slice(0, -1);
   },
   /**
-   * * 🇬🇧: Removes all elements matching a query condition.
-   * * 🇩🇪: Entfernt alle Elemente, die einer Suchbedingung entsprechen.
+   * * Removes all elements matching a query condition.
    * @example
    * remove.byMatch(users, 'Admin', 'exact', 'role')
    * @param array
-   * * 🇬🇧: The array.
-   * * 🇩🇪: Das Array.
+   * * The array.
    * @param query
-   * * 🇬🇧: The search query.
-   * * 🇩🇪: Der Suchbegriff.
+   * * The search query.
    * @param mode
-   * * 🇬🇧: The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
-   * * 🇩🇪: Der Vergleichsmodus ('exact', 'contains', 'startsWith', 'endsWith').
+   * * The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
    * @param key
-   * * 🇬🇧: (Optional) The object key if it is an array of objects.
-   * * 🇩🇪: (Optional) Der Objektschlüssel, falls es ein Array von Objekten ist.
+   * * (Optional) The object key if it is an array of objects.
    */
   byMatch(array, query, mode = "exact", key) {
+    const queryStr = String(query).toLowerCase();
     return array.filter((item) => {
       const val2 = key ? item[key] : item;
-      return !checkMatch(val2, query, mode);
+      const valStr = String(val2).toLowerCase();
+      switch (mode) {
+        case "exact":
+          return valStr === queryStr;
+        case "startsWith":
+          return valStr.startsWith(queryStr);
+        case "endsWith":
+          return valStr.endsWith(queryStr);
+        case "contains":
+          return valStr.includes(queryStr);
+        default:
+          return false;
+      }
     });
   }
 };
 var find = {
   /**
-   * * 🇬🇧: Finds the index of the first match.
-   * * 🇩🇪: Findet den Index des ersten Treffers.
+   * * Finds the index of the first match.
    * @param array
-   * * 🇬🇧: The array.
-   * * 🇩🇪: Das Array.
+   * * The array.
    * @param query
-   * * 🇬🇧: The search query.
-   * * 🇩🇪: Der Suchbegriff.
+   * * The search query.
    * @param mode
-   * * 🇬🇧: The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
-   * * 🇩🇪: Der Vergleichsmodus ('exact', 'contains', 'startsWith', 'endsWith').
+   * * The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
    * @param key
-   * * 🇬🇧: (Optional) The object key if it is an array of objects.
-   * * 🇩🇪: (Optional) Der Objektschlüssel, falls es ein Array von Objekten ist.
+   * * (Optional) The object key if it is an array of objects.
    * @returns
-   * * 🇬🇧: Index or -1.
-   * * 🇩🇪: Index oder -1.
+   * * Index or -1.
    */
   at(array, query, mode = "exact", key) {
+    const queryStr = String(query).toLowerCase();
     return array.findIndex((item) => {
       const val2 = key ? item[key] : item;
-      return checkMatch(val2, query, mode);
+      const valStr = String(val2).toLowerCase();
+      switch (mode) {
+        case "exact":
+          return valStr === queryStr;
+        case "startsWith":
+          return valStr.startsWith(queryStr);
+        case "endsWith":
+          return valStr.endsWith(queryStr);
+        case "contains":
+          return valStr.includes(queryStr);
+        default:
+          return false;
+      }
     });
   },
   /**
-   * * 🇬🇧: Returns all elements matching the condition (Filter).
-   * * 🇩🇪: Gibt alle Elemente zurück, die der Bedingung entsprechen (Filter).
+   * * Returns all elements matching the condition (Filter).
    * @param array
-   * * 🇬🇧: The array.
-   * * 🇩🇪: Das Array.
+   * * The array.
    * @param query
-   * * 🇬🇧: The search query.
-   * * 🇩🇪: Der Suchbegriff.
+   * * The search query.
    * @param mode
-   * * 🇬🇧: The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
-   * * 🇩🇪: Der Vergleichsmodus ('exact', 'contains', 'startsWith', 'endsWith').
+   * * The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
    * @param key
-   * * 🇬🇧: (Optional) The object key if it is an array of objects.
-   * * 🇩🇪: (Optional) Der Objektschlüssel, falls es ein Array von Objekten ist.
+   * * (Optional) The object key if it is an array of objects.
    * @returns
-   * * 🇬🇧: All matching elements or -1.
-   * * 🇩🇪: Alle passenden Elemente oder -1.
+   * * All matching elements or -1.
    */
   all(array, query, mode = "exact", key) {
+    const queryStr = String(query).toLowerCase();
     return array.filter((item) => {
       const val2 = key ? item[key] : item;
-      return checkMatch(val2, query, mode);
+      const valStr = String(val2).toLowerCase();
+      switch (mode) {
+        case "exact":
+          return valStr === queryStr;
+        case "startsWith":
+          return valStr.startsWith(queryStr);
+        case "endsWith":
+          return valStr.endsWith(queryStr);
+        case "contains":
+          return valStr.includes(queryStr);
+        default:
+          return false;
+      }
     });
   },
   /**
-   * * 🇬🇧: Returns the first matching element (or undefined).
-   * * 🇩🇪: Gibt das erste gefundene Element zurück (oder undefined).
+   * * Returns the first matching element (or undefined).
    * @param array
-   * * 🇬🇧: The array.
-   * * 🇩🇪: Das Array.
+   * * The array.
    * @param query
-   * * 🇬🇧: The search query.
-   * * 🇩🇪: Der Suchbegriff.
+   * * The search query.
    * @param mode
-   * * 🇬🇧: The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
-   * * 🇩🇪: Der Vergleichsmodus ('exact', 'contains', 'startsWith', 'endsWith').
+   * * The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
    * @param key
-   * * 🇬🇧: (Optional) The object key if it is an array of objects.
-   * * 🇩🇪: (Optional) Der Objektschlüssel, falls es ein Array von Objekten ist.
+   * * (Optional) The object key if it is an array of objects.
    * @returns
-   * * 🇬🇧: Index or -1.
-   * * 🇩🇪: Index oder -1.
+   * * Index or -1.
    */
   first(array, query, mode = "exact", key) {
+    const queryStr = String(query).toLowerCase();
     return array.find((item) => {
       const val2 = key ? item[key] : item;
-      return checkMatch(val2, query, mode);
+      const valStr = String(val2).toLowerCase();
+      switch (mode) {
+        case "exact":
+          return valStr === queryStr;
+        case "startsWith":
+          return valStr.startsWith(queryStr);
+        case "endsWith":
+          return valStr.endsWith(queryStr);
+        case "contains":
+          return valStr.includes(queryStr);
+        default:
+          return false;
+      }
     });
   },
   /**
-   * * 🇬🇧: Returns the last matching element (or undefined).
-   * * 🇩🇪: Gibt das letzte gefundene Element zurück (oder undefined).
+   * * Returns the last matching element (or undefined).
    * @param array
-   * * 🇬🇧: The array.
-   * * 🇩🇪: Das Array.
+   * * The array.
    * @param query
-   * * 🇬🇧: The search query.
-   * * 🇩🇪: Der Suchbegriff.
+   * * The search query.
    * @param mode
-   * * 🇬🇧: The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
-   * * 🇩🇪: Der Vergleichsmodus ('exact', 'contains', 'startsWith', 'endsWith').
+   * * The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
    * @param key
-   * * 🇬🇧: (Optional) The object key if it is an array of objects.
-   * * 🇩🇪: (Optional) Der Objektschlüssel, falls es ein Array von Objekten ist.
+   * * (Optional) The object key if it is an array of objects.
    * @returns
-   * * 🇬🇧: Index or -1.
-   * * 🇩🇪: Index oder -1.
+   * * Index or -1.
    */
   last(array, query, mode = "exact", key) {
+    const queryStr = String(query).toLowerCase();
     return [...array].reverse().find((item) => {
       const val2 = key ? item[key] : item;
-      return checkMatch(val2, query, mode);
+      const valStr = String(val2).toLowerCase();
+      switch (mode) {
+        case "exact":
+          return valStr === queryStr;
+        case "startsWith":
+          return valStr.startsWith(queryStr);
+        case "endsWith":
+          return valStr.endsWith(queryStr);
+        case "contains":
+          return valStr.includes(queryStr);
+        default:
+          return false;
+      }
     });
   },
   /**
-   * * 🇬🇧: Removes all elements matching a query condition.
-   * * 🇩🇪: Entfernt alle Elemente, die einer Suchbedingung entsprechen.
+   * * Removes all elements matching a query condition.
    * @example
    * find.byMatch(users, 'Admin', 'exact', 'role')
    * @param array
-   * * 🇬🇧: The array.
-   * * 🇩🇪: Das Array.
+   * * The array.
    * @param query
-   * * 🇬🇧: The search query.
-   * * 🇩🇪: Der Suchbegriff.
+   * * The search query.
    * @param mode
-   * * 🇬🇧: The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
-   * * 🇩🇪: Der Vergleichsmodus ('exact', 'contains', 'startsWith', 'endsWith').
+   * * The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
    * @param key
-   * * 🇬🇧: (Optional) The object key if it is an array of objects.
-   * * 🇩🇪: (Optional) Der Objektschlüssel, falls es ein Array von Objekten ist.
+   * * (Optional) The object key if it is an array of objects.
    * @returns
-   * * 🇬🇧: Index or -1.
-   * * 🇩🇪: Index oder -1.
+   * * Index or -1.
    */
   byMatch(array, query, mode = "exact", key) {
+    const queryStr = String(query).toLowerCase();
     return array.findIndex((item) => {
       const val2 = key ? item[key] : item;
-      return checkMatch(val2, query, mode);
+      const valStr = String(val2).toLowerCase();
+      switch (mode) {
+        case "exact":
+          return valStr === queryStr;
+        case "startsWith":
+          return valStr.startsWith(queryStr);
+        case "endsWith":
+          return valStr.endsWith(queryStr);
+        case "contains":
+          return valStr.includes(queryStr);
+        default:
+          return false;
+      }
     });
   }
 };
@@ -1447,16 +1591,18 @@ __export(objects_exports, {
   set: () => set
 });
 function mergeObjects(target, ...sources) {
-  if (!sources.length) return target;
+  if (!sources.length)
+    return target;
   const source = sources.shift();
   if (isObject(target) && isObject(source)) {
     for (const key in source) {
-      if (key === "__proto__" || key === "constructor") continue;
+      if (key === "__proto__" || key === "constructor")
+        continue;
       if (isObject(source[key])) {
-        if (!target[key]) Object.assign(target, { [key]: {} });
+        if (!target[key]) target[key] = {};
         mergeObjects(target[key], source[key]);
       } else {
-        Object.assign(target, { [key]: source[key] });
+        target[key] = source[key];
       }
     }
   }
@@ -1491,18 +1637,14 @@ function set(obj, path, value) {
 }
 var find2 = {
   /**
-   * * 🇬🇧: Returns the n-th entry of an object as a [key, value] pair. Supports negative indices.
-   * * 🇩🇪: Gibt den n-ten Eintrag eines Objekts als [Key, Value]-Paar zurück. Unterstützt negative Indizes.
-   * @example find.at({ a: 1, b: 2 }, 1) // => ['b', 2]
+   * * Returns the n-th entry of an object as a [key, value] pair. Supports negative indices.
+   * @example find.at({ a: 1, b: 2 }, 1) => ['b', 2]
    * @param obj
-   * * 🇬🇧: The object to search.
-   * * 🇩🇪: Das zu durchsuchende Objekt.
+   * * The object to search.
    * @param index
-   * * 🇬🇧: The index (0-based, negative counts from the back).
-   * * 🇩🇪: Der Index (0-basiert, negativ zählt von hinten).
+   * * The index (0-based, negative counts from the back).
    * @returns
-   * * 🇬🇧: A [key, value] tuple or undefined.
-   * * 🇩🇪: Ein [Key, Value]-Paar oder undefined.
+   * * A [key, value] tuple or undefined.
    */
   at(obj, index) {
     const entries = Object.entries(obj);
@@ -1510,97 +1652,131 @@ var find2 = {
     return entries[idx];
   },
   /**
-   * * 🇬🇧: Finds the first entry where the key or value matches the query.
-   * * 🇩🇪: Findet den ersten Eintrag, bei dem der Schlüssel oder Wert dem Suchbegriff entspricht.
+   * * Finds the first entry where the key or value matches the query.
    * @example find.first(config, 'admin', 'exact', 'key')
    * @param obj
-   * * 🇬🇧: The object to search.
-   * * 🇩🇪: Das zu durchsuchende Objekt.
+   * * The object to search.
    * @param query
-   * * 🇬🇧: The search query.
-   * * 🇩🇪: Der Suchbegriff.
+   * * The search query.
    * @param mode
-   * * 🇬🇧: The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
-   * * 🇩🇪: Der Vergleichsmodus ('exact', 'contains', 'startsWith', 'endsWith').
+   * * The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
    * @param searchBy
-   * * 🇬🇧: Whether to search by 'key' or 'value'.
-   * * 🇩🇪: Ob nach 'key' oder 'value' gesucht werden soll.
+   * * Whether to search by 'key' or 'value'.
    * @returns
-   * * 🇬🇧: The first matching [key, value] pair or undefined.
-   * * 🇩🇪: Das erste gefundene [key, value] Paar oder undefined.
+   * * The first matching [key, value] pair or undefined.
    */
   first(obj, query, mode = "exact", searchBy = "key") {
     const entries = Object.entries(obj);
+    const queryStr = String(query).toLowerCase();
     return entries.find(([key, val2]) => {
       const target = searchBy === "key" ? key : val2;
-      return checkMatch(target, query, mode);
+      const valStr = String(target).toLowerCase();
+      switch (mode) {
+        case "exact":
+          return valStr === queryStr;
+        case "startsWith":
+          return valStr.startsWith(queryStr);
+        case "endsWith":
+          return valStr.endsWith(queryStr);
+        case "contains":
+          return valStr.includes(queryStr);
+        default:
+          return false;
+      }
     });
   },
   /**
-   * * 🇬🇧: Finds the last entry where the key or value matches the query.
-   * * 🇩🇪: Findet den letzten Eintrag, bei dem der Schlüssel oder Wert dem Suchbegriff entspricht.
+   * * Finds the last entry where the key or value matches the query.
    * @example find.last(config, '.php', 'endsWith', 'key')
    * @param obj
-   * * 🇬🇧: The object to search.
-   * * 🇩🇪: Das zu durchsuchende Objekt.
+   * * The object to search.
    * @param query
-   * * 🇬🇧: The search query.
-   * * 🇩🇪: Der Suchbegriff.
+   * * The search query.
    * @param mode
-   * * 🇬🇧: The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
-   * * 🇩🇪: Der Vergleichsmodus ('exact', 'contains', 'startsWith', 'endsWith').
+   * * The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
    * @param searchBy
-   * * 🇬🇧: Whether to search by 'key' or 'value'.
-   * * 🇩🇪: Ob nach 'key' oder 'value' gesucht werden soll.
+   * * Whether to search by 'key' or 'value'.
    * @returns
-   * * 🇬🇧: The last matching [key, value] pair or undefined.
-   * * 🇩🇪: Das letzte gefundene [key, value] Paar oder undefined.
+   * * The last matching [key, value] pair or undefined.
    */
   last(obj, query, mode = "exact", searchBy = "key") {
     const entries = Object.entries(obj);
+    const queryStr = String(query).toLowerCase();
     return [...entries].reverse().find(([key, val2]) => {
       const target = searchBy === "key" ? key : val2;
-      return checkMatch(target, query, mode);
+      const valStr = String(target).toLowerCase();
+      switch (mode) {
+        case "exact":
+          return valStr === queryStr;
+        case "startsWith":
+          return valStr.startsWith(queryStr);
+        case "endsWith":
+          return valStr.endsWith(queryStr);
+        case "contains":
+          return valStr.includes(queryStr);
+        default:
+          return false;
+      }
     });
   },
   /**
-   * * 🇬🇧: Finds all keys matching the query.
-   * * 🇩🇪: Findet alle Schlüssel (Keys), die auf den Suchbegriff passen.
+   * * Finds all keys matching the query.
    * @example find.key(config, 'api_', 'startsWith')
    * @param obj
-   * * 🇬🇧: The object to search.
-   * * 🇩🇪: Das zu durchsuchende Objekt.
+   * * The object to search.
    * @param query
-   * * 🇬🇧: The search query.
-   * * 🇩🇪: Der Suchbegriff.
+   * * The search query.
    * @param mode
-   * * 🇬🇧: The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
-   * * 🇩🇪: Der Vergleichsmodus ('exact', 'contains', 'startsWith', 'endsWith').
+   * * The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
    * @returns
-   * * 🇬🇧: An array of matching keys.
-   * * 🇩🇪: Ein Array mit den passenden Schlüsseln.
+   * * An array of matching keys.
    */
   key(obj, query, mode = "exact") {
-    return Object.keys(obj).filter((key) => checkMatch(key, query, mode));
+    const queryStr = String(query).toLowerCase();
+    return Object.keys(obj).filter((key) => {
+      const valStr = String(key).toLowerCase();
+      switch (mode) {
+        case "exact":
+          return valStr === queryStr;
+        case "startsWith":
+          return valStr.startsWith(queryStr);
+        case "endsWith":
+          return valStr.endsWith(queryStr);
+        case "contains":
+          return valStr.includes(queryStr);
+        default:
+          return false;
+      }
+    });
   },
   /**
-   * * 🇬🇧: Finds all values matching the query.
-   * * 🇩🇪: Findet alle Werte (Values), die auf den Suchbegriff passen.
+   * * Finds all values matching the query.
    * @param obj
-   * * 🇬🇧: The object to search.
-   * * 🇩🇪: Das zu durchsuchende Objekt.
+   * * The object to search.
    * @param query
-   * * 🇬🇧: The search query.
-   * * 🇩🇪: Der Suchbegriff.
+   * * The search query.
    * @param mode
-   * * 🇬🇧: The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
-   * * 🇩🇪: Der Vergleichsmodus ('exact', 'contains', 'startsWith', 'endsWith').
+   * * The comparison mode ('exact', 'contains', 'startsWith', 'endsWith').
    * @returns
-   * * 🇬🇧: An array of matching values.
-   * * 🇩🇪: Ein Array mit den passenden Werten.
+   * * An array of matching values.
    */
   value(obj, query, mode = "exact") {
-    return Object.values(obj).filter((val2) => checkMatch(val2, query, mode));
+    const queryStr = String(query).toLowerCase();
+    return Object.values(obj).filter((val2) => {
+      const valStr = String(val2).toLowerCase();
+      switch (mode) {
+        case "exact":
+          return valStr === queryStr;
+        case "startsWith":
+          return valStr.startsWith(queryStr);
+        case "endsWith":
+          return valStr.endsWith(queryStr);
+        case "contains":
+          return valStr.includes(queryStr);
+        default:
+          return false;
+      }
+    });
   }
 };
 function isObject(item) {
@@ -1618,7 +1794,19 @@ Object.assign(jBase.prototype, cssMethods);
 Object.assign(jBase.prototype, eventMethods);
 Object.assign(jBase.prototype, domMethods);
 Object.assign(jBase.prototype, effectMethods);
-var init = (selector) => new jBase(selector);
+var init = (selector) => {
+  return new jBase(selector);
+};
+var bind = (window2) => {
+  const doc = window2.document;
+  const boundInit = (selector) => new jBase(selector, doc);
+  Object.assign(boundInit, {
+    fn: jBase.prototype,
+    http,
+    data
+  });
+  return boundInit;
+};
 var $ = init;
 var jB = init;
 var _jB = init;
@@ -1626,14 +1814,17 @@ var __jB = init;
 var _jBase = init;
 var __jBase = init;
 var jBase2 = init;
+var __ = init;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   $,
   JBaseClass,
+  __,
   __jB,
   __jBase,
   _jB,
   _jBase,
+  bind,
   data,
   debounce,
   http,
@@ -1643,508 +1834,419 @@ var jBase2 = init;
 });
 /**
  * @file src/core.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Core
  * @description
- * * 🇬🇧: The main jBase class. Handles the selection engine, initialization, and plugin architecture.
- * * 🇩🇪: Die Haupt-jBase-Klasse. Behandelt die Selektions-Engine, Initialisierung und Plugin-Architektur.
+ * * The main jBase class. Handles the selection engine, initialization, and plugin architecture.
  */
 /**
  * @file src/modules/css/classes.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category CSS
  * @description
- * * 🇬🇧: Methods for manipulating CSS classes (add, remove, toggle, has).
- * * 🇩🇪: Methoden zur Manipulation von CSS-Klassen (add, remove, toggle, has).
+ * * Methods for manipulating CSS classes (add, remove, toggle, has).
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/css/styles.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category CSS
  * @description
- * * 🇬🇧: Methods for getting and setting inline CSS styles.
- * * 🇩🇪: Methoden zum Lesen und Setzen von Inline-CSS-Styles.
+ * * Methods for getting and setting inline CSS styles.
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/css/index.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category CSS
  * @description
- * * 🇬🇧: Central entry point for CSS operations. Aggregates class and style manipulation methods.
- * * 🇩🇪: Zentraler Einstiegspunkt für CSS-Operationen. Aggregiert Methoden zur Klassen- und Style-Manipulation.
+ * * Central entry point for CSS operations. Aggregates class and style manipulation methods.
  * @requires ./classes
- * * 🇬🇧: Class manipulation methods (addClass, removeClass, etc.).
- * * 🇩🇪: Methoden zur Klassen-Manipulation (addClass, removeClass, etc.).
+ * * Class manipulation methods (addClass, removeClass, etc.).
  * @requires ./styles
- * * 🇬🇧: Style manipulation methods (css).
- * * 🇩🇪: Methoden zur Style-Manipulation (css).
+ * * Style manipulation methods (css).
  */
 /**
  * @file src/modules/events/binding.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Events
  * @description
- * * 🇬🇧: Core event binding methods (on, off, trigger). Handles event registration and removal.
- * * 🇩🇪: Kern-Methoden für Event-Binding (on, off, trigger). Behandelt die Registrierung und Entfernung von Events.
+ * * Core event binding methods (on, off, trigger). Handles event registration and removal.
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/events/mouse.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Events
  * @description
- * * 🇬🇧: Methods for handling mouse events (click, dblclick, hover, mouseenter, mouseleave).
- * * 🇩🇪: Methoden zur Behandlung von Maus-Events (click, dblclick, hover, mouseenter, mouseleave).
+ * * Methods for handling mouse events (click, dblclick, hover, mouseenter, mouseleave).
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/events/lifecycle.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Events
  * @description
- * * 🇬🇧: Methods for handling DOM lifecycle events (e.g., ready).
- * * 🇩🇪: Methoden zur Behandlung von DOM-Lebenszyklus-Events (z.B. ready).
+ * * Methods for handling DOM lifecycle events (e.g., ready).
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/events/keyboard.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Events
  * @description
- * * 🇬🇧: Methods for handling keyboard events (keydown, keyup, keypress).
- * * 🇩🇪: Methoden zur Behandlung von Tastatur-Events (keydown, keyup, keypress).
+ * * Methods for handling keyboard events (keydown, keyup, keypress).
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/events/form.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Events
  * @description
- * * 🇬🇧: Methods for handling form events (submit, change, focus, blur, input).
- * * 🇩🇪: Methoden zur Behandlung von Formular-Events (submit, change, focus, blur, input).
+ * * Methods for handling form events (submit, change, focus, blur, input).
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/events/touch.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Events
  * @description
- * * 🇬🇧: Methods for handling touch events (touchstart, touchend, touchmove).
- * * 🇩🇪: Methoden zur Behandlung von Touch-Events (touchstart, touchend, touchmove).
+ * * Methods for handling touch events (touchstart, touchend, touchmove).
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/events/index.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Events
  * @description
- * * 🇬🇧: Central entry point for event handling. Aggregates binding, mouse, lifecycle, keyboard, form, and touch events.
- * * 🇩🇪: Zentraler Einstiegspunkt für Event-Handling. Aggregiert Binding-, Maus-, Lebenszyklus-, Tastatur-, Formular- und Touch-Events.
+ * * Central entry point for event handling. Aggregates binding, mouse, lifecycle, keyboard, form, and touch events.
  * @requires ./binding
- * * 🇬🇧: General event binding (on, off).
- * * 🇩🇪: Generelle Event-Bindung (on, off).
+ * * General event binding (on, off).
  * @requires ./mouse
- * * 🇬🇧: Mouse interaction events (click, hover, etc.).
- * * 🇩🇪: Maus-Interaktions-Events (click, hover, etc.).
+ * * Mouse interaction events (click, hover, etc.).
  * @requires ./lifecycle
- * * 🇬🇧: DOM lifecycle events (ready).
- * * 🇩🇪: DOM-Lebenszyklus-Events (ready).
+ * * DOM lifecycle events (ready).
  * @requires ./keyboard
- * * 🇬🇧: Keyboard interaction events (keydown, keyup).
- * * 🇩🇪: Tastatur-Interaktions-Events (keydown, keyup).
+ * * Keyboard interaction events (keydown, keyup).
  * @requires ./form
- * * 🇬🇧: Form handling events (submit, change, input).
- * * 🇩🇪: Formular-Verarbeitungs-Events (submit, change, input).
+ * * Form handling events (submit, change, input).
  * @requires ./touch
- * * 🇬🇧: Touch interaction events.
- * * 🇩🇪: Touch-Interaktions-Events.
+ * * Touch interaction events.
  */
 /**
  * @file src/modules/dom/attributes.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category DOM
  * @description
- * * 🇬🇧: Methods for getting and setting HTML attributes and properties (attr, data, val).
- * * 🇩🇪: Methoden zum Lesen und Setzen von HTML-Attributen und Eigenschaften (attr, data, val).
+ * * Methods for getting and setting HTML attributes and properties (attr, data, val).
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/dom/content.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category DOM
  * @description
- * * 🇬🇧: Methods for getting and setting element content (html, text, empty, replaceWith).
- * * 🇩🇪: Methoden zum Lesen und Setzen von Elementinhalten (html, text, empty, replaceWith).
+ * * Methods for getting and setting element content (html, text, empty, replaceWith).
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/dom/manipulation.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category DOM
  * @description
- * * 🇬🇧: Methods for inserting, moving, and removing elements (append, prepend, remove).
- * * 🇩🇪: Methoden zum Einfügen, Verschieben und Entfernen von Elementen (append, prepend, remove).
+ * * Methods for inserting, moving, and removing elements (append, prepend, remove).
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/dom/traversal.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category DOM
  * @description
- * * 🇬🇧: Methods for navigating the DOM tree (find, parent, children, siblings).
- * * 🇩🇪: Methoden zur Navigation im DOM-Baum (find, parent, children, siblings).
+ * * Methods for navigating the DOM tree (find, parent, children, siblings).
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/dom/states.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category DOM
  * @description
- * * 🇬🇧: Methods for checking element states (e.g., visibility, checked, disabled).
- * * 🇩🇪: Methoden zur Prüfung von Element-Zuständen (z.B. Sichtbarkeit, checked, disabled).
+ * * Methods for checking element states (e.g., visibility, checked, disabled).
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/dom/index.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category DOM
  * @description
- * * 🇬🇧: Central entry point for DOM operations. Aggregates methods for attributes, content, manipulation, traversal, and states.
- * * 🇩🇪: Zentraler Einstiegspunkt für DOM-Operationen. Aggregiert Methoden für Attribute, Inhalt, Manipulation, Traversierung und Status.
+ * * Central entry point for DOM operations. Aggregates methods for attributes, content, manipulation, traversal, and states.
  * @requires ./attributes
- * * 🇬🇧: Attribute and value manipulation.
- * * 🇩🇪: Attribut- und Wert-Manipulation.
+ * * Attribute and value manipulation.
  * @requires ./content
- * * 🇬🇧: Content handling (html, text).
- * * 🇩🇪: Inhalts-Steuerung (html, text).
+ * * Content handling (html, text).
  * @requires ./manipulation
- * * 🇬🇧: DOM manipulation (append, remove, etc.).
- * * 🇩🇪: DOM-Manipulation (append, remove, etc.).
+ * * DOM manipulation (append, remove, etc.).
  * @requires ./traversal
- * * 🇬🇧: Tree traversal (find, parent, children).
- * * 🇩🇪: Baum-Durchquerung (find, parent, children).
+ * * Tree traversal (find, parent, children).
  * @requires ./states
- * * 🇬🇧: State checks (checked, disabled).
- * * 🇩🇪: Status-Prüfungen (checked, disabled).
- */
-/**
- * @file src/modules/effects/slide.ts
- * @version 2.0.1
- * @since 2.0.0
- * @license GPL-3.0-or-later
- * @copyright Sven Minio 2026
- * @author Sven Minio <https://sven-minio.de>
- * @category Effects
- * @description
- * * 🇬🇧: Methods for horizontal sliding effects (slideIn, slideOut, slideToggle).
- * * 🇩🇪: Methoden für horizontale Slide-Effekte (slideIn, slideOut, slideToggle).
- * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
- */
-/**
- * @file src/modules/effects/vertical.ts
- * @version 2.0.1
- * @since 2.0.0
- * @license GPL-3.0-or-later
- * @copyright Sven Minio 2026
- * @author Sven Minio <https://sven-minio.de>
- * @category Effects
- * @description
- * * 🇬🇧: Methods for vertical sliding effects (slideDown, slideUp, slideToggle).
- * * 🇩🇪: Methoden für vertikale Slide-Effekte (slideDown, slideUp, slideToggle).
- * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
- */
-/**
- * @file src/modules/effects/fade.ts
- * @version 2.0.1
- * @since 2.0.0
- * @license GPL-3.0-or-later
- * @copyright Sven Minio 2026
- * @author Sven Minio <https://sven-minio.de>
- * @category Effects
- * @description
- * * 🇬🇧: Methods for fading elements in and out (fadeIn, fadeOut, fadeToggle).
- * * 🇩🇪: Methoden zum Ein- und Ausblenden von Elementen (fadeIn, fadeOut, fadeToggle).
- * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
- */
-/**
- * @file src/modules/effects/index.ts
- * @version 2.0.1
- * @since 2.0.0
- * @license GPL-3.0-or-later
- * @copyright Sven Minio 2026
- * @author Sven Minio <https://sven-minio.de>
- * @category Effects
- * @description
- * * 🇬🇧: Central entry point for visual effects. Aggregates slide, fade, and vertical animation modules.
- * * 🇩🇪: Zentraler Einstiegspunkt für visuelle Effekte. Aggregiert Module für Slide-, Fade- und vertikale Animationen.
- * @requires ./slide
- * * 🇬🇧: Horizontal slide effects (slideIn, slideOut).
- * * 🇩🇪: Horizontale Slide-Effekte (slideIn, slideOut).
- * @requires ./vertical
- * * 🇬🇧: Vertical slide effects / Accordion (slideDown, slideUp).
- * * 🇩🇪: Vertikale Slide-Effekte / Akkordeon (slideDown, slideUp).
- * @requires ./fade
- * * 🇬🇧: Opacity fade effects (fadeIn, fadeOut).
- * * 🇩🇪: Opazitäts-Fade-Effekte (fadeIn, fadeOut).
+ * * State checks (checked, disabled).
  */
 /**
  * @file src/utils.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Utilities
  * @description
- * * 🇬🇧: General utility functions and helpers (e.g., debounce, throttle, type checks).
- * * 🇩🇪: Allgemeine Hilfsfunktionen und Helfer (z.B. debounce, throttle, Typ-Prüfungen).
+ * * General utility functions and helpers (e.g., debounce, throttle, type checks).
+ */
+/**
+ * @file src/modules/effects/slide.ts
+ * @version 2.0.2
+ * @since 2.0.0
+ * @license GPL-3.0-or-later
+ * @copyright Sven Minio 2026
+ * @author Sven Minio <https://sven-minio.de>
+ * @category Effects
+ * @description
+ * * Methods for horizontal sliding effects (slideIn, slideOut, slideToggle).
+ * @requires ../../core
+ * * Depends on the core jBase class for type definitions.
+ */
+/**
+ * @file src/modules/effects/vertical.ts
+ * @version 2.0.2
+ * @since 2.0.0
+ * @license GPL-3.0-or-later
+ * @copyright Sven Minio 2026
+ * @author Sven Minio <https://sven-minio.de>
+ * @category Effects
+ * @description
+ * * Methods for vertical sliding effects (slideDown, slideUp, slideToggle).
+ * @requires ../../core
+ * * Depends on the core jBase class for type definitions.
+ */
+/**
+ * @file src/modules/effects/fade.ts
+ * @version 2.0.2
+ * @since 2.0.0
+ * @license GPL-3.0-or-later
+ * @copyright Sven Minio 2026
+ * @author Sven Minio <https://sven-minio.de>
+ * @category Effects
+ * @description
+ * * Methods for fading elements in and out (fadeIn, fadeOut, fadeToggle).
+ * @requires ../../core
+ * * Depends on the core jBase class for type definitions.
+ */
+/**
+ * @file src/modules/effects/index.ts
+ * @version 2.0.2
+ * @since 2.0.0
+ * @license GPL-3.0-or-later
+ * @copyright Sven Minio 2026
+ * @author Sven Minio <https://sven-minio.de>
+ * @category Effects
+ * @description
+ * * Central entry point for visual effects. Aggregates slide, fade, and vertical animation modules.
+ * @requires ./slide
+ * * Horizontal slide effects (slideIn, slideOut).
+ * @requires ./vertical
+ * * Vertical slide effects / Accordion (slideDown, slideUp).
+ * @requires ./fade
+ * * Opacity fade effects (fadeIn, fadeOut).
  */
 /**
  * @file src/modules/http/get.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category HTTP
  * @description
- * * 🇬🇧: Abstraction for HTTP GET requests.
- * * 🇩🇪: Abstraktion für HTTP GET-Anfragen.
+ * * Abstraction for HTTP GET requests.
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/http/post.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category HTTP
  * * @description
- * * 🇬🇧: Abstraction for HTTP POST requests.
- * * 🇩🇪: Abstraktion für HTTP POST-Anfragen.
+ * * Abstraction for HTTP POST requests.
  * @requires ../../core
- * * 🇬🇧: Depends on the core jBase class for type definitions.
- * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+ * * Depends on the core jBase class for type definitions.
  */
 /**
  * @file src/modules/http/index.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category HTTP
  * @description
- * * 🇬🇧: Central entry point for HTTP requests. Aggregates GET and POST methods.
- * * 🇩🇪: Zentraler Einstiegspunkt für HTTP-Anfragen. Aggregiert GET- und POST-Methoden.
+ * * Central entry point for HTTP requests. Aggregates GET and POST methods.
  * @requires ./get
- * * 🇬🇧: HTTP GET methods (get, getText).
- * * 🇩🇪: HTTP GET-Methoden (get, getText).
+ * * HTTP GET methods (get, getText).
  * @requires ./post
- * * 🇬🇧: HTTP POST methods.
- * * 🇩🇪: HTTP POST-Methoden.
- */
-/**
- * @file src/modules/data/types.ts
- * @version 2.0.1
- * @since 2.0.0
- * @license GPL-3.0-or-later
- * @copyright Sven Minio 2026
- * @author Sven Minio <https://sven-minio.de>
- * @category Data
- * @description
- * * 🇬🇧: Type definitions and validation helpers for data structures.
- * * 🇩🇪: Typ-Definitionen und Validierungs-Hilfsmittel für Datenstrukturen.
+ * * HTTP POST methods.
  */
 /**
  * @file src/modules/data/arrays.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Data
  * @description
- * * 🇬🇧: Utility functions for array manipulation and data processing.
- * * 🇩🇪: Hilfsfunktionen für Array-Manipulation und Datenverarbeitung.
+ * * Utility functions for array manipulation and data processing.
  * @requires ./types
- * * 🇬🇧: Depends on match logic and types.
- * * 🇩🇪: Hängt von Match-Logik und Typen ab.
+ * * Depends on types.
  */
 /**
  * @file src/modules/data/objects.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Data
  * @description
- * * 🇬🇧: Utility functions for object manipulation (e.g., deep merging, extension).
- * * 🇩🇪: Hilfsfunktionen für Objekt-Manipulation (z.B. Deep Merge, Erweiterung).
+ * * Utility functions for object manipulation (e.g., deep merging, extension).
  * @requires ./types
- * * 🇬🇧: Depends on match logic and types.
- * * 🇩🇪: Hängt von Match-Logik und Typen ab.
+ * * Depends on types.
  */
 /**
  * @file src/modules/data/index.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Data
  * @description
- * * 🇬🇧: Central entry point for data manipulation modules. Aggregates array and object utilities.
- * * 🇩🇪: Zentraler Einstiegspunkt für Datenmanipulations-Module. Aggregiert Array- und Objekt-Hilfsmethoden.
+ * * Central entry point for data manipulation modules. Aggregates array and object utilities.
  * @requires ./arrays
- * * 🇬🇧: Array manipulation methods.
- * * 🇩🇪: Methoden zur Array-Manipulation.
+ * * Array manipulation methods.
  * @requires ./objects
- * * 🇬🇧: Object manipulation methods.
- * * 🇩🇪: Methoden zur Objekt-Manipulation.
+ * * Object manipulation methods.
  */
 /**
  * @file src/index.ts
- * @version 2.0.1
+ * @version 2.0.2
  * @since 2.0.0
  * @license GPL-3.0-or-later
  * @copyright Sven Minio 2026
  * @author Sven Minio <https://sven-minio.de>
  * @category Entry Point
  * @description
- * * 🇬🇧: Main library entry point. Aggregates Core, Types, Utils, and all functional modules into a single export.
- * * 🇩🇪: Haupt-Einstiegspunkt der Bibliothek. Aggregiert Core, Types, Utils und alle funktionalen Module in einen einzigen Export.
+ * * Main library entry point. Aggregates Core, Types, Utils, and all functional modules into a single export.
  * @requires ./core
- * * 🇬🇧: Core class logic and inheritance.
- * * 🇩🇪: Kern-Klassenlogik und Vererbung.
+ * * Core class logic and inheritance.
  * @requires ./types
- * * 🇬🇧: TypeScript type definitions and interfaces.
- * * 🇩🇪: TypeScript Typ-Definitionen und Interfaces.
+ * * TypeScript type definitions and interfaces.
  * @requires ./utils
- * * 🇬🇧: Helper functions (throttle, debounce).
- * * 🇩🇪: Hilfsfunktionen (throttle, debounce).
+ * * Helper functions (throttle, debounce).
  * @requires ./modules/css
- * * 🇬🇧: Style manipulation methods.
- * * 🇩🇪: Style-Manipulations-Methoden.
+ * * Style manipulation methods.
  * @requires ./modules/events
- * * 🇬🇧: Event handling logic.
- * * 🇩🇪: Event-Handling-Logik.
+ * * Event handling logic.
  * @requires ./modules/dom
- * * 🇬🇧: DOM traversal and manipulation.
- * * 🇩🇪: DOM-Traversierung und -Manipulation.
+ * * DOM traversal and manipulation.
  * @requires ./modules/effects
- * * 🇬🇧: Visual effects and animations.
- * * 🇩🇪: Visuelle Effekte und Animationen.
+ * * Visual effects and animations.
  * @requires ./modules/http
- * * 🇬🇧: HTTP client for AJAX requests.
- * * 🇩🇪: HTTP-Client für AJAX-Anfragen.
+ * * HTTP client for AJAX requests.
  * @requires ./modules/data
- * * 🇬🇧: Data structure utilities.
- * * 🇩🇪: Datenstruktur-Utilities.
+ * * Data structure utilities.
  */
+//# sourceMappingURL=index.cjs.map

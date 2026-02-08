@@ -6,11 +6,32 @@
  * @license GPL-3.0-or-later
  * @copyright 2026 Sven Minio (https://github.com/k37z3r/jBase-2.0)
  */
+"use strict";
 var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// src/server.ts
+var server_exports = {};
+__export(server_exports, {
+  parseHTML: () => parseHTML2
+});
+module.exports = __toCommonJS(server_exports);
+var import_jsdom = require("jsdom");
 
 // src/core.ts
 var jBase = class extends Array {
@@ -1024,24 +1045,6 @@ __export(slide_exports, {
 });
 
 // src/utils.ts
-function throttle(func, limit) {
-  let inThrottle;
-  return function(...args) {
-    const context = this;
-    if (!inThrottle) {
-      func.apply(context, args);
-      inThrottle = true;
-      setTimeout(() => inThrottle = false, limit);
-    }
-  };
-}
-function debounce(func, delay) {
-  let timer;
-  return function(...args) {
-    clearTimeout(timer);
-    timer = setTimeout(() => func.apply(this, args), delay);
-  };
-}
 function isBrowser() {
   return typeof window !== "undefined" && typeof window.requestAnimationFrame !== "undefined";
 }
@@ -1761,9 +1764,6 @@ Object.assign(jBase.prototype, cssMethods);
 Object.assign(jBase.prototype, eventMethods);
 Object.assign(jBase.prototype, domMethods);
 Object.assign(jBase.prototype, effectMethods);
-var init = (selector) => {
-  return new jBase(selector);
-};
 var bind = (window2) => {
   const doc = window2.document;
   const boundInit = (selector) => new jBase(selector, doc);
@@ -1774,30 +1774,24 @@ var bind = (window2) => {
   });
   return boundInit;
 };
-var $ = init;
-var jB = init;
-var _jB = init;
-var __jB = init;
-var _jBase = init;
-var __jBase = init;
-var jBase2 = init;
-var __ = init;
-export {
-  $,
-  jBase as JBaseClass,
-  __,
-  __jB,
-  __jBase,
-  _jB,
-  _jBase,
-  bind,
-  data,
-  debounce,
-  http,
-  jB,
-  jBase2 as jBase,
-  throttle
-};
+
+// src/server.ts
+function parseHTML2(html2) {
+  const dom = new import_jsdom.JSDOM(html2);
+  const win = dom.window;
+  const my$ = bind(win);
+  return {
+    $: my$,
+    document: win.document,
+    window: win,
+    html: () => dom.serialize(),
+    close: () => win.close()
+  };
+}
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  parseHTML
+});
 /**
  * @file src/core.ts
  * @version 2.0.2
@@ -2215,4 +2209,15 @@ export {
  * @requires ./modules/data
  * * Data structure utilities.
  */
-//# sourceMappingURL=index.mjs.map
+/**
+ * @file src/index.ts
+ * @version 2.0.2
+ * @since 2.0.0
+ * @license GPL-3.0-or-later
+ * @copyright Sven Minio 2026
+ * @author Sven Minio <https://sven-minio.de>
+ * @category Entry Point
+ * @description
+ * * Server-Side Rendering (SSR) utilities using JSDOM.
+ */
+//# sourceMappingURL=server.js.map

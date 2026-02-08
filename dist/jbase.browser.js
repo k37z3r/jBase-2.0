@@ -1,6 +1,6 @@
 /**
  * @k37z3r/jbase - A modern micro-framework for the web: jBase offers the familiar syntax of classic DOM libraries, but without their baggage. Fully typed, modular, and optimized for modern browser engines.
- * @version 2.0.1
+ * @version 2.0.2
  * @homepage https://github.com/k37z3r/jBase-2.0
  * @author Sven Minio (https://github.com/k37z3r/jBase-2.0)
  * @license GPL-3.0-or-later
@@ -28,27 +28,32 @@
       "use strict";
       /**
        * @file src/core.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Core
        * @description
-       * * 🇬🇧: The main jBase class. Handles the selection engine, initialization, and plugin architecture.
-       * * 🇩🇪: Die Haupt-jBase-Klasse. Behandelt die Selektions-Engine, Initialisierung und Plugin-Architektur.
+       * * The main jBase class. Handles the selection engine, initialization, and plugin architecture.
        */
       jBase = class extends Array {
         selectorSource = "";
+        doc;
         /**
-         * * 🇬🇧: Initializes a new jBase instance. Analyzes the provided selector and populates the internal array with found or created DOM elements.
-         * * 🇩🇪: Initialisiert eine neue jBase-Instanz. Analysiert den übergebenen Selektor und füllt das interne Array mit den gefundenen oder erstellten DOM-Elementen.
+         * * Initializes a new jBase instance. Analyzes the provided selector and populates the internal array with found or created DOM elements.
          * @param selector
-         * * 🇬🇧: The input selector (CSS selector, HTML string, DOM element, or collection).
-         * * 🇩🇪: Der Eingabe-Selektor (CSS-Selektor, HTML-String, DOM-Element oder Sammlung).
+         * * The input selector (CSS selector, HTML string, DOM element, or collection).
          */
-        constructor(selector) {
+        constructor(selector, context) {
           super();
+          if (context instanceof Document) {
+            this.doc = context;
+          } else if (context && context.document) {
+            this.doc = context.document;
+          } else {
+            this.doc = typeof document !== "undefined" ? document : null;
+          }
           if (typeof document === "undefined") {
             return;
           }
@@ -67,19 +72,31 @@
               const el = document.getElementById(trimmed.slice(1));
               if (el)
                 this.push(el);
+            } else if (trimmed.startsWith(".") && !trimmed.includes(" ") && !/[:\[#]/.test(trimmed)) {
+              const els = document.getElementsByClassName(trimmed.slice(1));
+              for (let i = 0; i < els.length; i++) {
+                this.push(els[i]);
+              }
+            } else if (/^[a-zA-Z0-9]+$/.test(trimmed)) {
+              const els = document.getElementsByTagName(trimmed);
+              for (let i = 0; i < els.length; i++) {
+                this.push(els[i]);
+              }
             } else {
-              this.push(...Array.from(document.querySelectorAll(selector)));
+              try {
+                this.push(...Array.from(document.querySelectorAll(selector)));
+              } catch (e) {
+                console.warn(`jBase: Invalid selector "${selector}"`, e);
+              }
             }
           } else if (selector instanceof NodeList || Array.isArray(selector)) {
             this.push(...Array.from(selector));
           }
         }
         /**
-         * * 🇬🇧: Custom serializer for JSON.stringify. Prevents circular references and huge outputs by returning a simplified preview.
-         * * 🇩🇪: Benutzerdefinierte Serialisierung für JSON.stringify. Verhindert Zirkelbezüge und riesige Ausgaben durch Rückgabe einer vereinfachten Vorschau.
+         * * Custom serializer for JSON.stringify. Prevents circular references and huge outputs by returning a simplified preview.
          * @returns
-         * * 🇬🇧: A simplified object representation for debugging.
-         * * 🇩🇪: Eine vereinfachte Objektrepräsentation für das Debugging.
+         * * A simplified object representation for debugging.
          */
         toJSON() {
           return {
@@ -133,18 +150,16 @@
       "use strict";
       /**
        * @file src/modules/css/classes.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category CSS
        * @description
-       * * 🇬🇧: Methods for manipulating CSS classes (add, remove, toggle, has).
-       * * 🇩🇪: Methoden zur Manipulation von CSS-Klassen (add, remove, toggle, has).
+       * * Methods for manipulating CSS classes (add, remove, toggle, has).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -158,7 +173,13 @@
     if (value === void 0) {
       const el = this[0];
       if (el instanceof HTMLElement || el instanceof SVGElement) {
-        return window.getComputedStyle(el)[property];
+        const doc = el.ownerDocument;
+        const win = doc ? doc.defaultView : null;
+        if (win) {
+          return win.getComputedStyle(el)[property];
+        } else {
+          return el.style[property] || "";
+        }
       }
       return "";
     }
@@ -174,18 +195,16 @@
       "use strict";
       /**
        * @file src/modules/css/styles.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category CSS
        * @description
-       * * 🇬🇧: Methods for getting and setting inline CSS styles.
-       * * 🇩🇪: Methoden zum Lesen und Setzen von Inline-CSS-Styles.
+       * * Methods for getting and setting inline CSS styles.
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -199,21 +218,18 @@
       init_styles();
       /**
        * @file src/modules/css/index.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category CSS
        * @description
-       * * 🇬🇧: Central entry point for CSS operations. Aggregates class and style manipulation methods.
-       * * 🇩🇪: Zentraler Einstiegspunkt für CSS-Operationen. Aggregiert Methoden zur Klassen- und Style-Manipulation.
+       * * Central entry point for CSS operations. Aggregates class and style manipulation methods.
        * @requires ./classes
-       * * 🇬🇧: Class manipulation methods (addClass, removeClass, etc.).
-       * * 🇩🇪: Methoden zur Klassen-Manipulation (addClass, removeClass, etc.).
+       * * Class manipulation methods (addClass, removeClass, etc.).
        * @requires ./styles
-       * * 🇬🇧: Style manipulation methods (css).
-       * * 🇩🇪: Methoden zur Style-Manipulation (css).
+       * * Style manipulation methods (css).
        */
       cssMethods = {
         ...classes_exports,
@@ -245,18 +261,16 @@
       "use strict";
       /**
        * @file src/modules/events/binding.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Events
        * @description
-       * * 🇬🇧: Core event binding methods (on, off, trigger). Handles event registration and removal.
-       * * 🇩🇪: Kern-Methoden für Event-Binding (on, off, trigger). Behandelt die Registrierung und Entfernung von Events.
+       * * Core event binding methods (on, off, trigger). Handles event registration and removal.
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -326,18 +340,16 @@
       "use strict";
       /**
        * @file src/modules/events/mouse.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Events
        * @description
-       * * 🇬🇧: Methods for handling mouse events (click, dblclick, hover, mouseenter, mouseleave).
-       * * 🇩🇪: Methoden zur Behandlung von Maus-Events (click, dblclick, hover, mouseenter, mouseleave).
+       * * Methods for handling mouse events (click, dblclick, hover, mouseenter, mouseleave).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -348,7 +360,8 @@
     ready: () => ready
   });
   function ready(handler) {
-    if (document.readyState === "complete" || document.readyState === "interactive") {
+    const doc = window.document;
+    if (doc.readyState === "complete" || doc.readyState === "interactive") {
       handler();
     } else {
       this.on("DOMContentLoaded", handler);
@@ -360,18 +373,16 @@
       "use strict";
       /**
        * @file src/modules/events/lifecycle.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Events
        * @description
-       * * 🇬🇧: Methods for handling DOM lifecycle events (e.g., ready).
-       * * 🇩🇪: Methoden zur Behandlung von DOM-Lebenszyklus-Events (z.B. ready).
+       * * Methods for handling DOM lifecycle events (e.g., ready).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -406,18 +417,16 @@
       "use strict";
       /**
        * @file src/modules/events/keyboard.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Events
        * @description
-       * * 🇬🇧: Methods for handling keyboard events (keydown, keyup, keypress).
-       * * 🇩🇪: Methoden zur Behandlung von Tastatur-Events (keydown, keyup, keypress).
+       * * Methods for handling keyboard events (keydown, keyup, keypress).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -465,18 +474,16 @@
       "use strict";
       /**
        * @file src/modules/events/form.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Events
        * @description
-       * * 🇬🇧: Methods for handling form events (submit, change, focus, blur, input).
-       * * 🇩🇪: Methoden zur Behandlung von Formular-Events (submit, change, focus, blur, input).
+       * * Methods for handling form events (submit, change, focus, blur, input).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -506,18 +513,16 @@
       "use strict";
       /**
        * @file src/modules/events/touch.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Events
        * @description
-       * * 🇬🇧: Methods for handling touch events (touchstart, touchend, touchmove).
-       * * 🇩🇪: Methoden zur Behandlung von Touch-Events (touchstart, touchend, touchmove).
+       * * Methods for handling touch events (touchstart, touchend, touchmove).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -535,33 +540,26 @@
       init_touch();
       /**
        * @file src/modules/events/index.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Events
        * @description
-       * * 🇬🇧: Central entry point for event handling. Aggregates binding, mouse, lifecycle, keyboard, form, and touch events.
-       * * 🇩🇪: Zentraler Einstiegspunkt für Event-Handling. Aggregiert Binding-, Maus-, Lebenszyklus-, Tastatur-, Formular- und Touch-Events.
+       * * Central entry point for event handling. Aggregates binding, mouse, lifecycle, keyboard, form, and touch events.
        * @requires ./binding
-       * * 🇬🇧: General event binding (on, off).
-       * * 🇩🇪: Generelle Event-Bindung (on, off).
+       * * General event binding (on, off).
        * @requires ./mouse
-       * * 🇬🇧: Mouse interaction events (click, hover, etc.).
-       * * 🇩🇪: Maus-Interaktions-Events (click, hover, etc.).
+       * * Mouse interaction events (click, hover, etc.).
        * @requires ./lifecycle
-       * * 🇬🇧: DOM lifecycle events (ready).
-       * * 🇩🇪: DOM-Lebenszyklus-Events (ready).
+       * * DOM lifecycle events (ready).
        * @requires ./keyboard
-       * * 🇬🇧: Keyboard interaction events (keydown, keyup).
-       * * 🇩🇪: Tastatur-Interaktions-Events (keydown, keyup).
+       * * Keyboard interaction events (keydown, keyup).
        * @requires ./form
-       * * 🇬🇧: Form handling events (submit, change, input).
-       * * 🇩🇪: Formular-Verarbeitungs-Events (submit, change, input).
+       * * Form handling events (submit, change, input).
        * @requires ./touch
-       * * 🇬🇧: Touch interaction events.
-       * * 🇩🇪: Touch-Interaktions-Events.
+       * * Touch interaction events.
        */
       eventMethods = {
         ...binding_exports,
@@ -610,18 +608,16 @@
       "use strict";
       /**
        * @file src/modules/dom/attributes.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category DOM
        * @description
-       * * 🇬🇧: Methods for getting and setting HTML attributes and properties (attr, data, val).
-       * * 🇩🇪: Methoden zum Lesen und Setzen von HTML-Attributen und Eigenschaften (attr, data, val).
+       * * Methods for getting and setting HTML attributes and properties (attr, data, val).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -659,18 +655,16 @@
       "use strict";
       /**
        * @file src/modules/dom/content.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category DOM
        * @description
-       * * 🇬🇧: Methods for getting and setting element content (html, text, empty, replaceWith).
-       * * 🇩🇪: Methoden zum Lesen und Setzen von Elementinhalten (html, text, empty, replaceWith).
+       * * Methods for getting and setting element content (html, text, empty, replaceWith).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -693,16 +687,22 @@
     unwrap: () => unwrap,
     wrap: () => wrap
   });
-  function parseHTML(html2) {
-    const tmp = document.createElement("div");
+  function parseHTML(html2, doc) {
+    const tmp = doc.createElement("div");
     tmp.innerHTML = html2.trim();
     return tmp.firstElementChild;
   }
-  function normalizeToFragment(content) {
-    const fragment = document.createDocumentFragment();
+  function getDoc(collection) {
+    if (collection.length > 0 && collection[0] instanceof Element) {
+      return collection[0].ownerDocument;
+    }
+    return typeof document !== "undefined" ? document : null;
+  }
+  function normalizeToFragment(content, doc) {
+    const fragment = doc.createDocumentFragment();
     const add = (item) => {
       if (typeof item === "string") {
-        const temp = document.createElement("div");
+        const temp = doc.createElement("div");
         temp.innerHTML = item.trim();
         while (temp.firstChild) {
           fragment.appendChild(temp.firstChild);
@@ -740,7 +740,18 @@
     return new this.constructor(newElements);
   }
   function append(content) {
-    const fragment = normalizeToFragment(content);
+    if (typeof content === "string") {
+      this.forEach((el) => {
+        if (el instanceof Element) {
+          el.insertAdjacentHTML("beforeend", content);
+        }
+      });
+      return this;
+    }
+    const doc = getDoc(this);
+    if (!doc)
+      return this;
+    const fragment = normalizeToFragment(content, doc);
     this.forEach((el, i) => {
       if (el instanceof Element) {
         const contentToInsert = i < this.length - 1 ? fragment.cloneNode(true) : fragment;
@@ -750,7 +761,18 @@
     return this;
   }
   function prepend(content) {
-    const fragment = normalizeToFragment(content);
+    if (typeof content === "string") {
+      this.forEach((el) => {
+        if (el instanceof Element) {
+          el.insertAdjacentHTML("afterbegin", content);
+        }
+      });
+      return this;
+    }
+    const doc = getDoc(this);
+    if (!doc)
+      return this;
+    const fragment = normalizeToFragment(content, doc);
     this.forEach((el, i) => {
       if (el instanceof Element) {
         const contentToInsert = i < this.length - 1 ? fragment.cloneNode(true) : fragment;
@@ -760,7 +782,18 @@
     return this;
   }
   function before(content) {
-    const fragment = normalizeToFragment(content);
+    if (typeof content === "string") {
+      this.forEach((el) => {
+        if (el instanceof Element) {
+          el.insertAdjacentHTML("beforebegin", content);
+        }
+      });
+      return this;
+    }
+    const doc = getDoc(this);
+    if (!doc)
+      return this;
+    const fragment = normalizeToFragment(content, doc);
     this.forEach((el, i) => {
       if (el instanceof Element) {
         const contentToInsert = i < this.length - 1 ? fragment.cloneNode(true) : fragment;
@@ -770,7 +803,18 @@
     return this;
   }
   function after(content) {
-    const fragment = normalizeToFragment(content);
+    if (typeof content === "string") {
+      this.forEach((el) => {
+        if (el instanceof Element) {
+          el.insertAdjacentHTML("afterend", content);
+        }
+      });
+      return this;
+    }
+    const doc = getDoc(this);
+    if (!doc)
+      return this;
+    const fragment = normalizeToFragment(content, doc);
     this.forEach((el, i) => {
       if (el instanceof Element) {
         const contentToInsert = i < this.length - 1 ? fragment.cloneNode(true) : fragment;
@@ -780,7 +824,10 @@
     return this;
   }
   function replaceWith(content) {
-    const fragment = normalizeToFragment(content);
+    const doc = getDoc(this);
+    if (!doc)
+      return this;
+    const fragment = normalizeToFragment(content, doc);
     this.forEach((el, i) => {
       if (el instanceof Element) {
         const contentToInsert = i < this.length - 1 ? fragment.cloneNode(true) : fragment;
@@ -790,9 +837,12 @@
     return this;
   }
   function appendTo(target) {
-    const parent2 = typeof target === "string" ? document.querySelector(target) : target;
+    const doc = getDoc(this);
+    if (!doc)
+      return this;
+    const parent2 = typeof target === "string" ? doc.querySelector(target) : target;
     if (parent2 instanceof Element) {
-      const fragment = document.createDocumentFragment();
+      const fragment = doc.createDocumentFragment();
       this.forEach((el) => {
         if (el instanceof Node) fragment.appendChild(el);
       });
@@ -801,9 +851,12 @@
     return this;
   }
   function prependTo(target) {
-    const parent2 = typeof target === "string" ? document.querySelector(target) : target;
+    const doc = getDoc(this);
+    if (!doc)
+      return this;
+    const parent2 = typeof target === "string" ? doc.querySelector(target) : target;
     if (parent2 instanceof Element) {
-      const fragment = document.createDocumentFragment();
+      const fragment = doc.createDocumentFragment();
       this.forEach((el) => {
         if (el instanceof Node) fragment.appendChild(el);
       });
@@ -812,9 +865,12 @@
     return this;
   }
   function insertBefore(target) {
-    const targetEl = typeof target === "string" ? document.querySelector(target) : target;
+    const doc = getDoc(this);
+    if (!doc)
+      return this;
+    const targetEl = typeof target === "string" ? doc.querySelector(target) : target;
     if (targetEl instanceof Element) {
-      const fragment = document.createDocumentFragment();
+      const fragment = doc.createDocumentFragment();
       this.forEach((el) => {
         if (el instanceof Node) fragment.appendChild(el);
       });
@@ -823,9 +879,12 @@
     return this;
   }
   function insertAfter(target) {
-    const targetEl = typeof target === "string" ? document.querySelector(target) : target;
+    const doc = getDoc(this);
+    if (!doc)
+      return this;
+    const targetEl = typeof target === "string" ? doc.querySelector(target) : target;
     if (targetEl instanceof Element) {
-      const fragment = document.createDocumentFragment();
+      const fragment = doc.createDocumentFragment();
       this.forEach((el) => {
         if (el instanceof Node) fragment.appendChild(el);
       });
@@ -834,9 +893,12 @@
     return this;
   }
   function wrap(wrapperHtml) {
+    const doc = getDoc(this);
+    if (!doc)
+      return this;
     this.forEach((el) => {
       if (el instanceof Element) {
-        const wrapper = parseHTML(wrapperHtml);
+        const wrapper = parseHTML(wrapperHtml, doc);
         if (el.parentNode) {
           el.parentNode.insertBefore(wrapper, el);
         }
@@ -846,15 +908,21 @@
     return this;
   }
   function unwrap() {
+    const doc = getDoc(this);
+    if (!doc)
+      return this;
+    const parents2 = /* @__PURE__ */ new Set();
     this.forEach((el) => {
       if (el instanceof Element && el.parentElement) {
-        const parent2 = el.parentElement;
-        const fragment = document.createDocumentFragment();
-        while (parent2.firstChild) {
-          fragment.appendChild(parent2.firstChild);
-        }
-        parent2.replaceWith(fragment);
+        parents2.add(el.parentElement);
       }
+    });
+    parents2.forEach((parent2) => {
+      const fragment = doc.createDocumentFragment();
+      while (parent2.firstChild) {
+        fragment.appendChild(parent2.firstChild);
+      }
+      parent2.replaceWith(fragment);
     });
     return this;
   }
@@ -864,18 +932,16 @@
       init_core();
       /**
        * @file src/modules/dom/manipulation.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category DOM
        * @description
-       * * 🇬🇧: Methods for inserting, moving, and removing elements (append, prepend, remove).
-       * * 🇩🇪: Methoden zum Einfügen, Verschieben und Entfernen von Elementen (append, prepend, remove).
+       * * Methods for inserting, moving, and removing elements (append, prepend, remove).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -1181,18 +1247,16 @@
       "use strict";
       /**
        * @file src/modules/dom/traversal.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category DOM
        * @description
-       * * 🇬🇧: Methods for navigating the DOM tree (find, parent, children, siblings).
-       * * 🇩🇪: Methoden zur Navigation im DOM-Baum (find, parent, children, siblings).
+       * * Methods for navigating the DOM tree (find, parent, children, siblings).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -1247,18 +1311,16 @@
       "use strict";
       /**
        * @file src/modules/dom/states.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category DOM
        * @description
-       * * 🇬🇧: Methods for checking element states (e.g., visibility, checked, disabled).
-       * * 🇩🇪: Methoden zur Prüfung von Element-Zuständen (z.B. Sichtbarkeit, checked, disabled).
+       * * Methods for checking element states (e.g., visibility, checked, disabled).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -1275,30 +1337,24 @@
       init_states();
       /**
        * @file src/modules/dom/index.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category DOM
        * @description
-       * * 🇬🇧: Central entry point for DOM operations. Aggregates methods for attributes, content, manipulation, traversal, and states.
-       * * 🇩🇪: Zentraler Einstiegspunkt für DOM-Operationen. Aggregiert Methoden für Attribute, Inhalt, Manipulation, Traversierung und Status.
+       * * Central entry point for DOM operations. Aggregates methods for attributes, content, manipulation, traversal, and states.
        * @requires ./attributes
-       * * 🇬🇧: Attribute and value manipulation.
-       * * 🇩🇪: Attribut- und Wert-Manipulation.
+       * * Attribute and value manipulation.
        * @requires ./content
-       * * 🇬🇧: Content handling (html, text).
-       * * 🇩🇪: Inhalts-Steuerung (html, text).
+       * * Content handling (html, text).
        * @requires ./manipulation
-       * * 🇬🇧: DOM manipulation (append, remove, etc.).
-       * * 🇩🇪: DOM-Manipulation (append, remove, etc.).
+       * * DOM manipulation (append, remove, etc.).
        * @requires ./traversal
-       * * 🇬🇧: Tree traversal (find, parent, children).
-       * * 🇩🇪: Baum-Durchquerung (find, parent, children).
+       * * Tree traversal (find, parent, children).
        * @requires ./states
-       * * 🇬🇧: State checks (checked, disabled).
-       * * 🇩🇪: Status-Prüfungen (checked, disabled).
+       * * State checks (checked, disabled).
        */
       domMethods = {
         ...attributes_exports,
@@ -1310,6 +1366,27 @@
     }
   });
 
+  // src/utils.ts
+  function isBrowser() {
+    return typeof window !== "undefined" && typeof window.requestAnimationFrame !== "undefined";
+  }
+  var init_utils = __esm({
+    "src/utils.ts"() {
+      "use strict";
+      /**
+       * @file src/utils.ts
+       * @version 2.0.2
+       * @since 2.0.0
+       * @license GPL-3.0-or-later
+       * @copyright Sven Minio 2026
+       * @author Sven Minio <https://sven-minio.de>
+       * @category Utilities
+       * @description
+       * * General utility functions and helpers (e.g., debounce, throttle, type checks).
+       */
+    }
+  });
+
   // src/modules/effects/slide.ts
   var slide_exports = {};
   __export(slide_exports, {
@@ -1318,6 +1395,8 @@
     slideToggle: () => slideToggle
   });
   function slideIn(options = {}) {
+    if (!isBrowser())
+      return this;
     const { duration = 300 } = options;
     this.forEach((el) => {
       if (el instanceof HTMLElement) {
@@ -1332,6 +1411,8 @@
     return this;
   }
   function slideOut(options = {}) {
+    if (!isBrowser())
+      return this;
     const { direction = "left", duration = 300 } = options;
     const translateValue = direction === "left" ? "-100%" : "100%";
     this.forEach((el) => {
@@ -1347,11 +1428,13 @@
     return this;
   }
   function slideToggle(options = {}) {
+    if (!isBrowser())
+      return this;
     this.forEach((el) => {
       if (el instanceof HTMLElement) {
         const state = el.getAttribute("data-slide-state");
         const currentTransform = el.style.transform;
-        if (state === "open" || currentTransform === "translateX(0%)" || window.getComputedStyle(el).display !== "none") {
+        if (state === "open" || currentTransform === "translateX(0%)") {
           const wrapper = new this.constructor(el);
           wrapper.slideOut(options);
         } else {
@@ -1365,20 +1448,19 @@
   var init_slide = __esm({
     "src/modules/effects/slide.ts"() {
       "use strict";
+      init_utils();
       /**
        * @file src/modules/effects/slide.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Effects
        * @description
-       * * 🇬🇧: Methods for horizontal sliding effects (slideIn, slideOut, slideToggle).
-       * * 🇩🇪: Methoden für horizontale Slide-Effekte (slideIn, slideOut, slideToggle).
+       * * Methods for horizontal sliding effects (slideIn, slideOut, slideToggle).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -1391,17 +1473,20 @@
     slideUp: () => slideUp
   });
   function slideDown(options = {}) {
+    if (!isBrowser())
+      return this;
     const { duration = 300, displayType = "block" } = options;
     this.forEach((el) => {
       if (el instanceof HTMLElement) {
-        if (window.getComputedStyle(el).display !== "none") return;
+        if (window.getComputedStyle(el).display !== "none")
+          return;
         el.style.display = displayType;
         const height = el.scrollHeight;
         el.style.height = "0px";
         el.style.overflow = "hidden";
         el.style.transition = `height ${duration}ms ease-in-out`;
         void el.offsetHeight;
-        el.style.height = height + "px";
+        el.style.height = `${height}px`;
         setTimeout(() => {
           el.style.height = "auto";
           el.style.overflow = "visible";
@@ -1412,10 +1497,12 @@
     return this;
   }
   function slideUp(options = {}) {
+    if (!isBrowser())
+      return this;
     const { duration = 300 } = options;
     this.forEach((el) => {
       if (el instanceof HTMLElement) {
-        el.style.height = el.scrollHeight + "px";
+        el.style.height = `${el.scrollHeight}px`;
         el.style.overflow = "hidden";
         el.style.transition = `height ${duration}ms ease-in-out`;
         void el.offsetHeight;
@@ -1431,6 +1518,8 @@
     return this;
   }
   function slideToggleBox(options = {}) {
+    if (!isBrowser())
+      return this;
     this.forEach((el) => {
       if (el instanceof HTMLElement) {
         const display = window.getComputedStyle(el).display;
@@ -1447,20 +1536,19 @@
   var init_vertical = __esm({
     "src/modules/effects/vertical.ts"() {
       "use strict";
+      init_utils();
       /**
        * @file src/modules/effects/vertical.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Effects
        * @description
-       * * 🇬🇧: Methods for vertical sliding effects (slideDown, slideUp, slideToggle).
-       * * 🇩🇪: Methoden für vertikale Slide-Effekte (slideDown, slideUp, slideToggle).
+       * * Methods for vertical sliding effects (slideDown, slideUp, slideToggle).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -1473,6 +1561,8 @@
     fadeToggle: () => fadeToggle
   });
   function fadeIn(options = {}) {
+    if (!isBrowser())
+      return this;
     const { duration = 300, displayType = "block" } = options;
     this.forEach((el) => {
       if (el instanceof HTMLElement) {
@@ -1491,6 +1581,8 @@
     return this;
   }
   function fadeOut(options = {}) {
+    if (!isBrowser())
+      return this;
     const { duration = 300 } = options;
     this.forEach((el) => {
       if (el instanceof HTMLElement) {
@@ -1509,6 +1601,8 @@
     return this;
   }
   function fadeToggle(options = {}) {
+    if (!isBrowser())
+      return this;
     this.forEach((el) => {
       if (el instanceof HTMLElement) {
         const display = window.getComputedStyle(el).display;
@@ -1525,20 +1619,19 @@
   var init_fade = __esm({
     "src/modules/effects/fade.ts"() {
       "use strict";
+      init_utils();
       /**
        * @file src/modules/effects/fade.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Effects
        * @description
-       * * 🇬🇧: Methods for fading elements in and out (fadeIn, fadeOut, fadeToggle).
-       * * 🇩🇪: Methoden zum Ein- und Ausblenden von Elementen (fadeIn, fadeOut, fadeToggle).
+       * * Methods for fading elements in and out (fadeIn, fadeOut, fadeToggle).
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -1553,49 +1646,26 @@
       init_fade();
       /**
        * @file src/modules/effects/index.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Effects
        * @description
-       * * 🇬🇧: Central entry point for visual effects. Aggregates slide, fade, and vertical animation modules.
-       * * 🇩🇪: Zentraler Einstiegspunkt für visuelle Effekte. Aggregiert Module für Slide-, Fade- und vertikale Animationen.
+       * * Central entry point for visual effects. Aggregates slide, fade, and vertical animation modules.
        * @requires ./slide
-       * * 🇬🇧: Horizontal slide effects (slideIn, slideOut).
-       * * 🇩🇪: Horizontale Slide-Effekte (slideIn, slideOut).
+       * * Horizontal slide effects (slideIn, slideOut).
        * @requires ./vertical
-       * * 🇬🇧: Vertical slide effects / Accordion (slideDown, slideUp).
-       * * 🇩🇪: Vertikale Slide-Effekte / Akkordeon (slideDown, slideUp).
+       * * Vertical slide effects / Accordion (slideDown, slideUp).
        * @requires ./fade
-       * * 🇬🇧: Opacity fade effects (fadeIn, fadeOut).
-       * * 🇩🇪: Opazitäts-Fade-Effekte (fadeIn, fadeOut).
+       * * Opacity fade effects (fadeIn, fadeOut).
        */
       effectMethods = {
         ...slide_exports,
         ...vertical_exports,
         ...fade_exports
       };
-    }
-  });
-
-  // src/utils.ts
-  var init_utils = __esm({
-    "src/utils.ts"() {
-      "use strict";
-      /**
-       * @file src/utils.ts
-       * @version 2.0.1
-       * @since 2.0.0
-       * @license GPL-3.0-or-later
-       * @copyright Sven Minio 2026
-       * @author Sven Minio <https://sven-minio.de>
-       * @category Utilities
-       * @description
-       * * 🇬🇧: General utility functions and helpers (e.g., debounce, throttle, type checks).
-       * * 🇩🇪: Allgemeine Hilfsfunktionen und Helfer (z.B. debounce, throttle, Typ-Prüfungen).
-       */
     }
   });
 
@@ -1612,32 +1682,32 @@
     if (!response.ok) {
       throw new Error(`HTTP Error: ${response.status}`);
     }
-    return await response.json();
+    const text2 = await response.text();
+    return text2 ? JSON.parse(text2) : {};
   }
   async function getText(url) {
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`HTTP Error: ${response.status}`);
     }
-    return await response.text();
+    const text2 = await response.text();
+    return text2 ? JSON.parse(text2) : {};
   }
   var init_get = __esm({
     "src/modules/http/get.ts"() {
       "use strict";
       /**
        * @file src/modules/http/get.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category HTTP
        * @description
-       * * 🇬🇧: Abstraction for HTTP GET requests.
-       * * 🇩🇪: Abstraktion für HTTP GET-Anfragen.
+       * * Abstraction for HTTP GET requests.
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -1654,31 +1724,30 @@
       body: JSON.stringify(body)
     });
     if (response.status === 204) {
-      const text2 = await response.text();
-      return text2 ? JSON.parse(text2) : {};
+      const text3 = await response.text();
+      return text3 ? JSON.parse(text3) : {};
     }
     if (!response.ok) {
       throw new Error(`HTTP Error: ${response.status}`);
     }
-    return await response.json();
+    const text2 = await response.text();
+    return text2 ? JSON.parse(text2) : {};
   }
   var init_post = __esm({
     "src/modules/http/post.ts"() {
       "use strict";
       /**
        * @file src/modules/http/post.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category HTTP
        * * @description
-       * * 🇬🇧: Abstraction for HTTP POST requests.
-       * * 🇩🇪: Abstraktion für HTTP POST-Anfragen.
+       * * Abstraction for HTTP POST requests.
        * @requires ../../core
-       * * 🇬🇧: Depends on the core jBase class for type definitions.
-       * * 🇩🇪: Hängt von der Core-jBase-Klasse für Typ-Definitionen ab.
+       * * Depends on the core jBase class for type definitions.
        */
     }
   });
@@ -1692,21 +1761,18 @@
       init_post();
       /**
        * @file src/modules/http/index.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category HTTP
        * @description
-       * * 🇬🇧: Central entry point for HTTP requests. Aggregates GET and POST methods.
-       * * 🇩🇪: Zentraler Einstiegspunkt für HTTP-Anfragen. Aggregiert GET- und POST-Methoden.
+       * * Central entry point for HTTP requests. Aggregates GET and POST methods.
        * @requires ./get
-       * * 🇬🇧: HTTP GET methods (get, getText).
-       * * 🇩🇪: HTTP GET-Methoden (get, getText).
+       * * HTTP GET methods (get, getText).
        * @requires ./post
-       * * 🇬🇧: HTTP POST methods.
-       * * 🇩🇪: HTTP POST-Methoden.
+       * * HTTP POST methods.
        */
       http = {
         ...get_exports,
@@ -1715,44 +1781,22 @@
     }
   });
 
-  // src/modules/data/types.ts
-  var init_types = __esm({
-    "src/modules/data/types.ts"() {
-      "use strict";
-      /**
-       * @file src/modules/data/types.ts
-       * @version 2.0.1
-       * @since 2.0.0
-       * @license GPL-3.0-or-later
-       * @copyright Sven Minio 2026
-       * @author Sven Minio <https://sven-minio.de>
-       * @category Data
-       * @description
-       * * 🇬🇧: Type definitions and validation helpers for data structures.
-       * * 🇩🇪: Typ-Definitionen und Validierungs-Hilfsmittel für Datenstrukturen.
-       */
-    }
-  });
-
   // src/modules/data/arrays.ts
   var init_arrays = __esm({
     "src/modules/data/arrays.ts"() {
       "use strict";
-      init_types();
       /**
        * @file src/modules/data/arrays.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Data
        * @description
-       * * 🇬🇧: Utility functions for array manipulation and data processing.
-       * * 🇩🇪: Hilfsfunktionen für Array-Manipulation und Datenverarbeitung.
+       * * Utility functions for array manipulation and data processing.
        * @requires ./types
-       * * 🇬🇧: Depends on match logic and types.
-       * * 🇩🇪: Hängt von Match-Logik und Typen ab.
+       * * Depends on types.
        */
     }
   });
@@ -1761,21 +1805,18 @@
   var init_objects = __esm({
     "src/modules/data/objects.ts"() {
       "use strict";
-      init_types();
       /**
        * @file src/modules/data/objects.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Data
        * @description
-       * * 🇬🇧: Utility functions for object manipulation (e.g., deep merging, extension).
-       * * 🇩🇪: Hilfsfunktionen für Objekt-Manipulation (z.B. Deep Merge, Erweiterung).
+       * * Utility functions for object manipulation (e.g., deep merging, extension).
        * @requires ./types
-       * * 🇬🇧: Depends on match logic and types.
-       * * 🇩🇪: Hängt von Match-Logik und Typen ab.
+       * * Depends on types.
        */
     }
   });
@@ -1788,27 +1829,24 @@
       init_objects();
       /**
        * @file src/modules/data/index.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Data
        * @description
-       * * 🇬🇧: Central entry point for data manipulation modules. Aggregates array and object utilities.
-       * * 🇩🇪: Zentraler Einstiegspunkt für Datenmanipulations-Module. Aggregiert Array- und Objekt-Hilfsmethoden.
+       * * Central entry point for data manipulation modules. Aggregates array and object utilities.
        * @requires ./arrays
-       * * 🇬🇧: Array manipulation methods.
-       * * 🇩🇪: Methoden zur Array-Manipulation.
+       * * Array manipulation methods.
        * @requires ./objects
-       * * 🇬🇧: Object manipulation methods.
-       * * 🇩🇪: Methoden zur Objekt-Manipulation.
+       * * Object manipulation methods.
        */
     }
   });
 
   // src/index.ts
-  var init, $, jB, _jB, __jB, _jBase, __jBase, jBase2;
+  var init, $, jB, _jB, __jB, _jBase, __jBase, jBase2, __;
   var init_index = __esm({
     "src/index.ts"() {
       "use strict";
@@ -1817,54 +1855,48 @@
       init_events();
       init_dom();
       init_effects();
+      init_http();
+      init_data();
       init_utils();
       init_utils();
       init_http();
       init_data();
       /**
        * @file src/index.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Entry Point
        * @description
-       * * 🇬🇧: Main library entry point. Aggregates Core, Types, Utils, and all functional modules into a single export.
-       * * 🇩🇪: Haupt-Einstiegspunkt der Bibliothek. Aggregiert Core, Types, Utils und alle funktionalen Module in einen einzigen Export.
+       * * Main library entry point. Aggregates Core, Types, Utils, and all functional modules into a single export.
        * @requires ./core
-       * * 🇬🇧: Core class logic and inheritance.
-       * * 🇩🇪: Kern-Klassenlogik und Vererbung.
+       * * Core class logic and inheritance.
        * @requires ./types
-       * * 🇬🇧: TypeScript type definitions and interfaces.
-       * * 🇩🇪: TypeScript Typ-Definitionen und Interfaces.
+       * * TypeScript type definitions and interfaces.
        * @requires ./utils
-       * * 🇬🇧: Helper functions (throttle, debounce).
-       * * 🇩🇪: Hilfsfunktionen (throttle, debounce).
+       * * Helper functions (throttle, debounce).
        * @requires ./modules/css
-       * * 🇬🇧: Style manipulation methods.
-       * * 🇩🇪: Style-Manipulations-Methoden.
+       * * Style manipulation methods.
        * @requires ./modules/events
-       * * 🇬🇧: Event handling logic.
-       * * 🇩🇪: Event-Handling-Logik.
+       * * Event handling logic.
        * @requires ./modules/dom
-       * * 🇬🇧: DOM traversal and manipulation.
-       * * 🇩🇪: DOM-Traversierung und -Manipulation.
+       * * DOM traversal and manipulation.
        * @requires ./modules/effects
-       * * 🇬🇧: Visual effects and animations.
-       * * 🇩🇪: Visuelle Effekte und Animationen.
+       * * Visual effects and animations.
        * @requires ./modules/http
-       * * 🇬🇧: HTTP client for AJAX requests.
-       * * 🇩🇪: HTTP-Client für AJAX-Anfragen.
+       * * HTTP client for AJAX requests.
        * @requires ./modules/data
-       * * 🇬🇧: Data structure utilities.
-       * * 🇩🇪: Datenstruktur-Utilities.
+       * * Data structure utilities.
        */
       Object.assign(jBase.prototype, cssMethods);
       Object.assign(jBase.prototype, eventMethods);
       Object.assign(jBase.prototype, domMethods);
       Object.assign(jBase.prototype, effectMethods);
-      init = (selector) => new jBase(selector);
+      init = (selector) => {
+        return new jBase(selector);
+      };
       $ = init;
       jB = init;
       _jB = init;
@@ -1872,6 +1904,7 @@
       _jBase = init;
       __jBase = init;
       jBase2 = init;
+      __ = init;
     }
   });
 
@@ -1881,15 +1914,14 @@
       init_index();
       /**
        * @file src/browser.ts
-       * @version 2.0.1
+       * @version 2.0.2
        * @since 2.0.0
        * @license GPL-3.0-or-later
        * @copyright Sven Minio 2026
        * @author Sven Minio <https://sven-minio.de>
        * @category Browser
        * @description
-       * * 🇬🇧: Browser Entry Point. Attaches the jBase library and utilities to the global window object so they can be accessed via `$` or `jBase` in inline scripts.
-       * * 🇩🇪: Browser-Einstiegspunkt. Hängt die jBase-Bibliothek und Utilities an das globale Window-Objekt an, damit sie über `$` oder `jBase` in Inline-Skripten verfügbar sind.
+       * * Browser Entry Point. Attaches the jBase library and utilities to the global window object so they can be accessed via `$` or `jBase` in inline scripts.
        */
       window.$ = $;
       window.jBase = jBase2;
@@ -1898,9 +1930,11 @@
       window.__jB = __jB;
       window._jBase = _jBase;
       window.__jBase = __jBase;
+      window.__ = __;
       window.http = http;
       console.log("jBase initialized and ready!");
     }
   });
   require_browser();
 })();
+//# sourceMappingURL=jbase.browser.js.map
